@@ -10,6 +10,9 @@ import time
 import tensorflow
 from keras import layers, models, optimizers
 from keras import backend as K
+import glob
+import json
+import shutil
 
 
 def fire_module(x, fire_id, squeeze=16, expand=64):
@@ -18,7 +21,6 @@ def fire_module(x, fire_id, squeeze=16, expand=64):
     exp3x3 = "expand3x3"
     relu = "relu_"
     #https://github.com/rcmalli/keras-squeezenet/blob/master/keras_squeezenet/squeezenet.py
-
     s_id = 'fire' + str(fire_id) + '/'
 
     if K.image_data_format() == 'channels_first':
@@ -28,13 +30,10 @@ def fire_module(x, fire_id, squeeze=16, expand=64):
 
     x = layers.Convolution2D(squeeze, (1, 1), padding='valid', name=s_id + sq1x1)(x)
     x = layers.Activation('relu', name=s_id + relu + sq1x1)(x)
-
     left = layers.Convolution2D(expand, (1, 1), padding='valid', name=s_id + exp1x1)(x)
     left = layers.Activation('relu', name=s_id + relu + exp1x1)(left)
-
     right = layers.Convolution2D(expand, (3, 3), padding='same', name=s_id + exp3x3)(x)
     right = layers.Activation('relu', name=s_id + relu + exp3x3)(right)
-
     x = layers.concatenate([left, right], axis=channel_axis, name=s_id + 'concat')
     return x
 
@@ -63,11 +62,9 @@ def get_squeeze_net():
     return model
 
 
-
 class Agent(pygame.sprite.Sprite):
-
-    def __init__(self, x, y, bounds, range = 10, kill_angle = .01, team = None, a_id = None, alive = True,
-                 color = None, pixels_per_square = 8):
+    def __init__(self, x, y, bounds, range = 12, kill_angle = .01, team = None, a_id = None, alive = True,
+                 color = None, pixels_per_square = 8, path = None, g_id = 0):
         super(Agent, self).__init__()
         self.x = x
         self.y = y
@@ -87,6 +84,10 @@ class Agent(pygame.sprite.Sprite):
         self.rect.centery = self.y * pixels_per_square
         self.pixels_per_square = pixels_per_square
         self.alive = alive
+        self.path = path
+        self.g_id = g_id
+        self.move_count = 0
+        self.logs = []
 
 
     #Main function
@@ -99,13 +100,20 @@ class Agent(pygame.sprite.Sprite):
             #TODO: replace random with 3 networks
             x_m = random.random() * 2 - 1
             y_m = random.random() * 2 - 1
+            a_m_t = math.atan2(y_m, x_m)
+            a_m = math.atan2(y_m, x_m)/math.pi
+            x_m = math.cos(a_m_t)
+            y_m = math.sin(a_m_t)
+
             self.move(x_m, y_m)
-            print('move', self.a_id)
-            x_m = random.random() * 2 - 1
-            y_m = random.random() * 2 - 1
-            print(x_m, y_m)
-            result['shot'] = self.shoot(x_m, y_m)
-            print('shot', result['shot'] )
+            x_s = random.random() * 2 - 1
+            y_s = random.random() * 2 - 1
+            a_s = math.atan2(y_s, x_s)/math.pi
+
+            result['shot'] = self.shoot(x_s, y_s)
+            self.logs.append({'a_m':a_m, 'a_s':a_s, 'move':self.move_count})
+            self.move_count += 1
+            self.log_turns()
         return result
 
 
@@ -164,19 +172,39 @@ class Agent(pygame.sprite.Sprite):
         self.rect.centery = self.y * self.pixels_per_square
 
 
-    def build_models(self):
-        self.m_d = pass
+    def log_turns(self):
+        if not os.path.exists(self.path + '/agent_{0}/'.format(self.a_id)):
+            os.makedirs(self.path + '/agent_{0}/'.format(self.a_id))
+
+        with open(self.path + '/agent_{0}/'.format(self.a_id) + 'agent_{0}_{1}.json'.format(self.g_id, self.a_id), 'w') as f:
+            print(self.logs)
+            json.dump(self.logs, f)
+
+
+    def win(self):
+        for i in self.logs:
+            i.update({'result':1})
+        self.log_turns()
+
+
+    def lose(self):
+        for i in self.logs:
+            i.update({'result':0})
+        self.log_turns()
+
+
+    # def build_models(self):
+    #     self.m_d = pass
 
 
 
 class Board():
 
-    def __init__(self):
+    def __init__(self, path = None, g_id = 0):
         self.team1 = []
         self.team2 = []
-
-        self.team1.append(Agent(team = 1, a_id = 1, bounds=(0, 32, 0, 32), x = 4, y = 4, color=(255, 0, 0)))
-        self.team2.append(Agent(team = 2, a_id = 2, bounds=(0, 32, 0, 32), x = 27, y = 27, color=(0, 0, 255)))
+        self.team1.append(Agent(team = 1, a_id = 1, bounds=(0, 31, 0, 31), x = 2, y = 2, color=(255, 0, 0), g_id = g_id, path=path))
+        self.team2.append(Agent(team = 2, a_id = 2, bounds=(0, 31, 0, 31), x = 29, y = 29, color=(0, 0, 255), g_id = g_id, path=path))
 
 
     def render_agents(self):
@@ -207,44 +235,60 @@ class Board():
 
 
     def check_if_game_over(self):
-        print('here')
-        print([i for i in self.team1 if i.alive])
-        if len([i for i in self.team1 if i.alive]) > 0 and len([i for i in self.team2 if i.alive]) > 0:
+        if len([i for i in self.team1 if i.alive]) == 0:
+            for j in self.team1:
+                j.lose()
+            for j in self.team2:
+                j.win()
+
+        elif len([i for i in self.team2 if i.alive]) == 0:
+            for j in self.team2:
+                j.lose()
+            for j in self.team1:
+                j.win()
+        else:
             return False
         return True
 
 
 
 def main():
+    path = '/home/td/Documents/rl_tests/swarm_1/dual/'
+
+    if not os.path.exists(path + '/images/'):
+        os.makedirs(path + '/images/')
+
     pygame.init()
     screen = pygame.display.set_mode((256, 256))
     pygame.display.set_caption('test')
     pygame.mouse.set_visible(0)
     screen.fill((0, 0, 0))
 
-    b = Board()
-    s = b.render_agents()
-    for sprite_one in s:
-        screen.blit(sprite_one.image, (sprite_one.rect.centerx,sprite_one.rect.centery))
-    pygame.display.flip()
-    time.sleep(1)
-
-    while not b.check_if_game_over():
-        shots = b.run_turn()
-
-        #draw
-        screen.fill((0, 0, 0))
-        for s in shots:
-            print(s)
-            pygame.draw.line(screen, (0, 255, 0), s[0], s[1])
+    for g in range(10000):
+        b = Board(path = path, g_id = g)
         s = b.render_agents()
         for sprite_one in s:
-            screen.blit(sprite_one.image, (sprite_one.rect.centerx, sprite_one.rect.centery))
+            screen.blit(sprite_one.image, (sprite_one.rect.centerx,sprite_one.rect.centery))
         pygame.display.flip()
-    time.sleep(5)
+
+        count = 0
+        while not b.check_if_game_over():
+            shots = b.run_turn()
 
 
+            pygame.image.save(screen, path + '/images/' + "g_img_{0}_{1}.jpeg".format(g, count))
+            count += 1
 
+            screen.fill((0, 0, 0))
+            for s in shots:
+                print(s)
+                pygame.draw.line(screen, (0, 255, 0), s[0], s[1])
+            s = b.render_agents()
+            for sprite_one in s:
+                screen.blit(sprite_one.image, (sprite_one.rect.centerx, sprite_one.rect.centery))
+            pygame.display.flip()
+            # time.sleep(1)
+        time.sleep(5)
 
 
 
