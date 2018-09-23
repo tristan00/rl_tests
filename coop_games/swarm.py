@@ -1,4 +1,4 @@
-
+#naive solution, training on games won with random policy
 
 import os, sys
 import pygame
@@ -8,14 +8,14 @@ import random
 import numpy as np
 import time
 import tensorflow
-from keras import layers, models, optimizers
+from keras import layers, models, optimizers, callbacks
 from keras import backend as K
 import glob
 import json
 import shutil
 from PIL import Image
 import re
-
+from sklearn.model_selection import train_test_split
 
 max_record_len = 500
 
@@ -63,6 +63,8 @@ def get_squeeze_net():
     x = layers.GlobalAveragePooling2D()(x)
     x = layers.Activation('tanh', name='loss')(x)
     model = models.Model(img_input, x, name='squeezenet')
+
+    model.compile('adam', loss='mean_squared_error', metrics = ['mean_squared_error'])
     return model
 
 
@@ -211,12 +213,22 @@ def train_models(path, a_id):
     for i in results:
         with open(i, 'r') as f:
             j = json.load(f)
+            print(len(j))
+            if len(j) > 200:
+                continue
             for k in j:
                 img_p = glob.glob(path + 'images/g_img_{0}_{1}.jpeg'.format(re.findall('\d+', i)[-2], k['move']))[0]
                 img = np.array(Image.open(img_p))
-                print(img.shape)
                 x.append(img)
-                y.append('x_m':x_m, 'y_m':y_m, 'x_s':x_s, 'y_s':y_s)
+                y.append(np.array([k['x_m'], k['y_m'], k['x_s'], k['y_s']]))
+
+    x = np.array(x)
+    y = np.array(y)
+
+    x_train, x_val, y_train, y_val = train_test_split(x, y, test_size=.1)
+    net = get_squeeze_net()
+    cb = callbacks.EarlyStopping(monitor='val_loss', min_delta=0, patience=0, verbose=0, mode='auto')
+    net.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=10, callbacks=[cb], batch_size=512)
 
 
 
