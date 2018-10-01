@@ -30,21 +30,25 @@ root_logger.addHandler(stdout_handler)
 root_logger.setLevel(logging.ERROR)
 import warnings
 warnings.filterwarnings("ignore")
-max_record_len = 5
+max_record_len = 10
 option_space_size = 40
+epsilon = .1
 
-epsilon = .05
 
 
 def get_net(x1, x2):
     img_input = layers.Input(shape=(x1.shape[1],), name='img_input')
     input2 = layers.Input(shape=(option_space_size,), name='input2')
     x = layers.concatenate([input2, img_input])
-    x = layers.Dense(2048, activation='elu', name='dl1')(x)
-    x = layers.Dropout(.5)(x)
-    x = layers.Dense(2048, activation='elu', name='dl2')(x)
-    x = layers.Dropout(.5)(x)
-    x = layers.Dense(2048, activation='elu', name='dl3')(x)
+    x = layers.Dense(2048, activation='relu', name='dl1')(x)
+    x = layers.Dense(2048, activation='relu', name='dl2')(x)
+    x = layers.Dense(2048, activation='relu', name='dl3')(x)
+    x = layers.Dense(2048, activation='relu', name='dl4')(x)
+
+    # x = layers.Dropout(.5)(x)
+    # x = layers.Dense(4096, activation='relu', name='dl2')(x)
+    # # x = layers.Dropout(.5)(x)
+    # x = layers.Dense(2048, activation='elu', name='dl3')(x)
 
     x1 = layers.Dense(1, activation='sigmoid', name='predictions1')(x)
 
@@ -105,7 +109,7 @@ class Agent(pygame.sprite.Sprite):
 
 
     #Main function
-    def run_turn(self):
+    def run_turn(self, g_state):
         # print('turn for agent', self.a_id, self.x, self.y)
         result = {}
         if self.alive:
@@ -114,7 +118,7 @@ class Agent(pygame.sprite.Sprite):
             if self.models_loaded:
                 if random.random() > epsilon:
 
-                    x = self.get_model_prediction()
+                    x = self.get_model_prediction(g_state)
                     # print(x)
                     # x = np.squeeze(x)
                     # x_m_np = x[0:option_space_size]
@@ -130,9 +134,9 @@ class Agent(pygame.sprite.Sprite):
                     s_index_np2 = s_index_np
 
                     # m_index = float(np.random.choice(np.array([i for i in range(m_index_np2.shape[0])]), p = m_index_np2))
-                    s_index = float(np.random.choice(np.array([i for i in range(s_index_np2.shape[0])]), p = s_index_np2))
+                    # s_index = float(np.random.choice(np.array([i for i in range(s_index_np2.shape[0])]), p = s_index_np2))
                     # m_index = np.argmax(m_index_np2)
-                    # s_index = np.argmax(s_index_np2)
+                    s_index = float(np.argmax(s_index_np2))
                 else:
                     s_index = random.choice([i for i in range(option_space_size)])
 
@@ -247,13 +251,13 @@ class Agent(pygame.sprite.Sprite):
             self.models_loaded = False
 
 
-    def get_model_prediction(self):
+    def get_model_prediction(self, g_state):
         pass
-        img_p = glob.glob(self.path + 'data/last_data.plk')[0]
-
-        with open(img_p, 'rb') as f:
-            x1_temp = pickle.load(f)
-
+        # img_p = glob.glob(self.path + 'data/last_data.plk')[0]
+        #
+        # with open(img_p, 'rb') as f:
+        #     x1_temp = pickle.load(f)
+        x1_temp = g_state
         x1 = []
         for i in range(option_space_size):
             x1.append(x1_temp)
@@ -286,8 +290,8 @@ class Agent(pygame.sprite.Sprite):
 def train_models(path, a_id, t_id):
     print(path + 'agent_{0}/*.json'.format(a_id))
     result_files = glob.glob(path + 'agent_{0}/*.json'.format(a_id))
-    if len(result_files) > 25000:
-        result_files = random.sample(result_files, 25000)
+    # if len(result_files) > 25000:
+    #     result_files = random.sample(result_files, 25000)
 
     x, y1, y2, results = [], [], [], []
     for i in result_files:
@@ -340,12 +344,29 @@ def train_models(path, a_id, t_id):
     results= np.array(results)
     x_train, x_val, y2_train, y2_val, train_results, val_results = train_test_split(x, y2, results, test_size=.1)
 
+    if x_train.shape[0] < 2000:
+        chunk_size = 8
+    elif x_train.shape[0] < 4000:
+        chunk_size = 16
+    elif x_train.shape[0] < 8000:
+        chunk_size = 32
+    elif x_train.shape[0] < 16000:
+        chunk_size = 64
+    elif x_train.shape[0] < 32000:
+        chunk_size = 128
+    elif x_train.shape[0] < 64000:
+        chunk_size = 256
+    elif x_train.shape[0] < 128000:
+        chunk_size = 512
+    else:
+        chunk_size = 1024
+
     print(x_train.shape, y2_train.shape, train_results.shape)
     net = get_net(x_train, y2_train)
-    cb1 = callbacks.EarlyStopping(monitor='val_loss', min_delta=0, patience=2, verbose=0, mode='auto')
+    cb1 = callbacks.EarlyStopping(monitor='val_loss', min_delta=0, patience=5, verbose=0, mode='auto')
     cb2 = callbacks.ModelCheckpoint(path + 'agent_{0}/squeezenet'.format(a_id), monitor='val_loss', verbose=0, save_best_only=True,
                                     save_weights_only=False, mode='auto', period=1)
-    net.fit([x_train, y2_train], train_results, validation_data=([x_val, y2_val], val_results), epochs=100, callbacks=[cb1, cb2], batch_size=16)
+    net.fit([x_train, y2_train], train_results, validation_data=([x_val, y2_val], val_results), epochs=200, callbacks=[cb1, cb2], batch_size=chunk_size)
 
 
 
@@ -354,14 +375,14 @@ class Board():
     def __init__(self, path = None, g_id = 0):
         self.team1 = []
         self.team2 = []
-        self.team1.append(Agent(team = 1, a_id = 1, bounds=(16, 16, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 1, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
-        # self.team1.append(Agent(team = 1, a_id = 2, bounds=(16, 16, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 50, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
-        # self.team1.append(Agent(team = 1, a_id = 3, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 100, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
+        self.team1.append(Agent(team = 1, a_id = 1, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 1, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
+        self.team1.append(Agent(team = 1, a_id = 2, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 50, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
+        self.team1.append(Agent(team = 1, a_id = 3, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 100, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
         # self.team1.append(Agent(team = 1, a_id = 4, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 150, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
         # self.team1.append(Agent(team = 1, a_id = 5, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 200, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
-        self.team2.append(Agent(team = 2, a_id = 6, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(1, 1, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
-        # self.team2.append(Agent(team = 2, a_id = 7, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(1, 50, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
-        # self.team2.append(Agent(team = 2, a_id = 8, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(1, 100, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
+        self.team2.append(Agent(team = 2, a_id = 6, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 39), color=(1, 1, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([False, False])))
+        self.team2.append(Agent(team = 2, a_id = 7, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(1, 50, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
+        self.team2.append(Agent(team = 2, a_id = 8, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(1, 100, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
         # self.team2.append(Agent(team = 2, a_id = 9, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(1, 150, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
         # self.team2.append(Agent(team = 2, a_id = 10, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(1, 200, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
 
@@ -374,6 +395,7 @@ class Board():
                 data.append(1)
             else:
                 data.append(0)
+            data.append(i.move_count)
 
             for j in self.team1:
                 if i.a_id != j.a_id:
@@ -388,6 +410,8 @@ class Board():
                 data.append(1)
             else:
                 data.append(0)
+            data.append(i.move_count)
+
             for j in self.team2:
                 if i.a_id != j.a_id:
                     data.append(math.atan2(j.y - i.y, j.x - i.x))
@@ -409,10 +433,10 @@ class Board():
 
     def run_turn(self, team):
         shots = []
-
+        data = self.get_board_representation()
         if team == 1:
             for i in self.team1:
-                res = i.run_turn()
+                res = i.run_turn(data)
 
                 if 'shot' in res:
                     for j in self.team1:
@@ -424,7 +448,7 @@ class Board():
 
         if team == 2:
             for i in self.team2:
-                res = i.run_turn()
+                res = i.run_turn(data)
 
                 if 'shot' in res:
                     for j in self.team1:
@@ -494,9 +518,9 @@ def main():
     screen.fill((0, 0, 0))
 
     st = time.time()
-    game_count = 50000
+    game_count = 1000000
     try:
-        result_dicts = pd.read_csv('res.csv').to_dict(orient='records')
+        result_dicts = pd.read_csv(path + 'res.csv').to_dict(orient='records')
     except:
         result_dicts = []
     game_count_start = 0
@@ -527,8 +551,8 @@ def main():
                 # pygame.image.save(screen, path + '/images/' + "g_img_{0}_{1}_{2}.jpeg".format(g, count, turn))
 
                 data = b.get_board_representation()
-                with open(path + '/data/' + "last_data.plk", 'wb') as f:
-                    pickle.dump(data, f)
+                # with open(path + '/data/' + "last_data.plk", 'wb') as f:
+                #     pickle.dump(data, f)
                 with open(path + '/data/' + "g_img_{0}_{1}_{2}.plk".format(g, count, turn), 'wb') as f:
                     pickle.dump(data, f)
 
@@ -556,25 +580,25 @@ def main():
         result_dicts.append({'g':g, 'result':result})
         df = pd.DataFrame.from_dict(result_dicts)
         df.to_csv(path + 'res.csv', index=False)
-        if g % 1000 == 0 and g > 0:
+        if g % 1000 == 0 and g > 999:
             del b
             gc.collect()
             train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 1, 1)
             gc.collect()
-            # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 2, 1)
-            # gc.collect()
-            # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 3, 1)
-            # gc.collect()
+            train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 2, 1)
+            gc.collect()
+            train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 3, 1)
+            gc.collect()
             # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 4, 1)
             # gc.collect()
             # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 5, 1)
             # gc.collect()
             train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 6, 2)
             gc.collect()
-            # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 7, 2)
-            # gc.collect()
-            # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 8, 2)
-            # gc.collect()
+            train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 7, 2)
+            gc.collect()
+            train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 8, 2)
+            gc.collect()
             # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 9, 2)
             # gc.collect()
             # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 10, 2)
@@ -585,10 +609,10 @@ def main():
 
 if __name__ == '__main__':
     # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 1, 1)
-    # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 2, 1)
-    # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 3, 1)
-    # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 4, 1)
-    # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 5, 1)
+    # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 2, 2)
+    # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 3, 2)
+    # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 4, 2)
+    # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 5, 2)
     # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 6, 2)
     # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 7, 2)
     # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 8, 2)
