@@ -32,7 +32,8 @@ import warnings
 warnings.filterwarnings("ignore")
 max_record_len = 10
 option_space_size = 40
-epsilon = .1
+epsilon = .8
+epsilon_decay = .9
 
 
 
@@ -43,7 +44,7 @@ def get_net(x1, x2):
     x = layers.Dense(2048, activation='relu', name='dl1')(x)
     x = layers.Dense(2048, activation='relu', name='dl2')(x)
     x = layers.Dense(2048, activation='relu', name='dl3')(x)
-    x = layers.Dense(2048, activation='relu', name='dl4')(x)
+    # x = layers.Dense(2048, activation='relu', name='dl4')(x)
 
     # x = layers.Dropout(.5)(x)
     # x = layers.Dense(4096, activation='relu', name='dl2')(x)
@@ -377,12 +378,12 @@ class Board():
         self.team2 = []
         self.team1.append(Agent(team = 1, a_id = 1, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 1, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
         self.team1.append(Agent(team = 1, a_id = 2, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 50, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
-        self.team1.append(Agent(team = 1, a_id = 3, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 100, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
+        # self.team1.append(Agent(team = 1, a_id = 3, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 100, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
         # self.team1.append(Agent(team = 1, a_id = 4, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 150, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
         # self.team1.append(Agent(team = 1, a_id = 5, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 200, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
         self.team2.append(Agent(team = 2, a_id = 6, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 39), color=(1, 1, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([False, False])))
         self.team2.append(Agent(team = 2, a_id = 7, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(1, 50, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
-        self.team2.append(Agent(team = 2, a_id = 8, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(1, 100, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
+        # self.team2.append(Agent(team = 2, a_id = 8, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(1, 100, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
         # self.team2.append(Agent(team = 2, a_id = 9, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(1, 150, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
         # self.team2.append(Agent(team = 2, a_id = 10, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(1, 200, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
 
@@ -504,6 +505,8 @@ class Board():
 
 
 def main():
+    global epsilon
+
     path = '/home/td/Documents/rl_tests/swarm_1/dual/'
 
     if not os.path.exists(path + '/images/'):
@@ -576,19 +579,20 @@ def main():
         result = b.get_result()
         result_dict.setdefault(result, 0)
         result_dict[result] += 1
-        print('results', result_dict)
+        print('results', result_dict, epsilon)
         result_dicts.append({'g':g, 'result':result})
         df = pd.DataFrame.from_dict(result_dicts)
         df.to_csv(path + 'res.csv', index=False)
         if g % 1000 == 0 and g > 999:
+            epsilon = epsilon * epsilon_decay
             del b
             gc.collect()
             train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 1, 1)
             gc.collect()
             train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 2, 1)
             gc.collect()
-            train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 3, 1)
-            gc.collect()
+            # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 3, 1)
+            # gc.collect()
             # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 4, 1)
             # gc.collect()
             # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 5, 1)
@@ -597,8 +601,8 @@ def main():
             gc.collect()
             train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 7, 2)
             gc.collect()
-            train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 8, 2)
-            gc.collect()
+            # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 8, 2)
+            # gc.collect()
             # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 9, 2)
             # gc.collect()
             # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 10, 2)
