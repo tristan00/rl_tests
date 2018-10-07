@@ -32,8 +32,8 @@ import warnings
 warnings.filterwarnings("ignore")
 max_record_len = 10
 option_space_size = 40
-epsilon = .8
-epsilon_decay = .9
+epsilon = 1.0
+epsilon_decay = .5
 
 
 
@@ -41,10 +41,10 @@ def get_net(x1, x2):
     img_input = layers.Input(shape=(x1.shape[1],), name='img_input')
     input2 = layers.Input(shape=(option_space_size,), name='input2')
     x = layers.concatenate([input2, img_input])
-    x = layers.Dense(2048, activation='relu', name='dl1')(x)
-    x = layers.Dense(2048, activation='relu', name='dl2')(x)
-    x = layers.Dense(2048, activation='relu', name='dl3')(x)
-    # x = layers.Dense(2048, activation='relu', name='dl4')(x)
+    x = layers.Dense(4096, activation='relu', name='dl1')(x)
+    x = layers.Dense(4096, activation='relu', name='dl2')(x)
+    x = layers.Dense(4096, activation='relu', name='dl3')(x)
+    x = layers.Dense(2048, activation='relu', name='dl4')(x)
 
     # x = layers.Dropout(.5)(x)
     # x = layers.Dense(4096, activation='relu', name='dl2')(x)
@@ -198,6 +198,9 @@ class Agent(pygame.sprite.Sprite):
         distance = math.sqrt((self.x - shot_origin[0])**2 + (self.y - shot_origin[1])**2)
         if distance <= shot['range'] and distance > 0 and abs(shot['angle'] - angle) < shot['kill_angle']:
             self.die()
+            return True
+        else:
+            return False
 
 
     def die(self):
@@ -231,13 +234,21 @@ class Agent(pygame.sprite.Sprite):
     def win(self):
         # print(self.logs)
         for i in self.logs:
-            i.update({'result':1})
+            i.update({'result': 1})
+            # if self.alive:
+            #     i.update({'result':1})
+            # else:
+            #     i.update({'result': 0})
         self.log_turns()
 
 
     def lose(self):
         for i in self.logs:
-            i.update({'result':0})
+            i.update({'result': 0})
+            # if self.alive:
+            #     i.update({'result':1})
+            # else:
+            #     i.update({'result': 0})
         self.log_turns()
 
 
@@ -374,16 +385,17 @@ def train_models(path, a_id, t_id):
 class Board():
 
     def __init__(self, path = None, g_id = 0):
+        self.g_id = g_id
         self.team1 = []
         self.team2 = []
         self.team1.append(Agent(team = 1, a_id = 1, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 1, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
         self.team1.append(Agent(team = 1, a_id = 2, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 50, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
-        # self.team1.append(Agent(team = 1, a_id = 3, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 100, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
+        self.team1.append(Agent(team = 1, a_id = 3, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 100, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
         # self.team1.append(Agent(team = 1, a_id = 4, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 150, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
         # self.team1.append(Agent(team = 1, a_id = 5, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(255, 200, 1), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
-        self.team2.append(Agent(team = 2, a_id = 6, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 39), color=(1, 1, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([False, False])))
+        self.team2.append(Agent(team = 2, a_id = 6, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(1, 1, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([False, False])))
         self.team2.append(Agent(team = 2, a_id = 7, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(1, 50, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
-        # self.team2.append(Agent(team = 2, a_id = 8, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(1, 100, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
+        self.team2.append(Agent(team = 2, a_id = 8, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(1, 100, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
         # self.team2.append(Agent(team = 2, a_id = 9, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(1, 150, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
         # self.team2.append(Agent(team = 2, a_id = 10, bounds=(16, 47, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(1, 200, 255), g_id = g_id, path=path, range = 40, kill_angle=.2, use_model = random.choice([True, True])))
 
@@ -423,6 +435,7 @@ class Board():
 
 
     def refresh(self, path = None, g_id = 0):
+        self.g_id = g_id
         for count, i in enumerate(self.team1):
             i.refresh( bounds=(16, 47, 16, 47), x = random.randint(16, 47), y = random.randint(16, 47), g_id = g_id)
         for i in self.team2:
@@ -434,6 +447,7 @@ class Board():
 
     def run_turn(self, team):
         shots = []
+        kill_feed = []
         data = self.get_board_representation()
         if team == 1:
             for i in self.team1:
@@ -441,9 +455,13 @@ class Board():
 
                 if 'shot' in res:
                     for j in self.team1:
-                        j.get_shot_at(res['shot'])
+                        r = j.get_shot_at(res['shot'])
+                        if r:
+                            kill_feed.append({'g_id':self.g_id, 'shooter':i.a_id, 'shot':j.a_id})
                     for j in self.team2:
-                        j.get_shot_at(res['shot'])
+                        r = j.get_shot_at(res['shot'])
+                        if r:
+                            kill_feed.append({'g_id':self.g_id, 'shooter':i.a_id, 'shot':j.a_id})
 
                     shots.append(res['shot']['segment_scaled'])
 
@@ -453,11 +471,15 @@ class Board():
 
                 if 'shot' in res:
                     for j in self.team1:
-                        j.get_shot_at(res['shot'])
+                        r = j.get_shot_at(res['shot'])
+                        if r:
+                            kill_feed.append({'g_id':self.g_id, 'shooter':i.a_id, 'shot':j.a_id})
                     for j in self.team2:
-                        j.get_shot_at(res['shot'])
+                        r = j.get_shot_at(res['shot'])
+                        if r:
+                            kill_feed.append({'g_id':self.g_id, 'shooter':i.a_id, 'shot':j.a_id})
                     shots.append(res['shot']['segment_scaled'])
-        return shots
+        return shots, kill_feed
 
 
     def check_if_game_over(self):
@@ -504,8 +526,8 @@ class Board():
 
 
 
-def main():
-    global epsilon
+def main(input_game_num, epsilon):
+    # global epsilon
 
     path = '/home/td/Documents/rl_tests/swarm_1/dual/'
 
@@ -521,12 +543,14 @@ def main():
     screen.fill((0, 0, 0))
 
     st = time.time()
-    game_count = 1000000
+    game_count = (input_game_num + 1)*10000 - 1
     try:
         result_dicts = pd.read_csv(path + 'res.csv').to_dict(orient='records')
+        kill_feed = pd.read_csv(path + 'kill_feed.csv').to_dict(orient='records')
     except:
         result_dicts = []
-    game_count_start = 0
+        kill_feed = []
+    game_count_start = input_game_num*10000
     g = game_count_start
     result_dict = {}
 
@@ -559,8 +583,9 @@ def main():
                 with open(path + '/data/' + "g_img_{0}_{1}_{2}.plk".format(g, count, turn), 'wb') as f:
                     pickle.dump(data, f)
 
-                time.sleep(.001)
-                shots = b.run_turn(turn)
+                # time.sleep(.001)
+                shots, turn_kill_feed = b.run_turn(turn)
+                kill_feed.extend(turn_kill_feed)
                 screen.fill((0, 0, 0))
                 for s in shots:
                     # print(s)
@@ -581,18 +606,23 @@ def main():
         result_dict[result] += 1
         print('results', result_dict, epsilon)
         result_dicts.append({'g':g, 'result':result})
-        df = pd.DataFrame.from_dict(result_dicts)
-        df.to_csv(path + 'res.csv', index=False)
-        if g % 1000 == 0 and g > 999:
-            epsilon = epsilon * epsilon_decay
+
+        if (g % 10000 == 0 and g > 0) or game_count == g:
+            df = pd.DataFrame.from_dict(result_dicts)
+            df.to_csv(path + 'res.csv', index=False)
+
+            df = pd.DataFrame.from_dict(kill_feed)
+            df.to_csv(path + 'kill_feed.csv', index=False)
+
+
             del b
             gc.collect()
             train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 1, 1)
             gc.collect()
             train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 2, 1)
             gc.collect()
-            # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 3, 1)
-            # gc.collect()
+            train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 3, 1)
+            gc.collect()
             # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 4, 1)
             # gc.collect()
             # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 5, 1)
@@ -601,8 +631,8 @@ def main():
             gc.collect()
             train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 7, 2)
             gc.collect()
-            # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 8, 2)
-            # gc.collect()
+            train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 8, 2)
+            gc.collect()
             # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 9, 2)
             # gc.collect()
             # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 10, 2)
@@ -612,14 +642,22 @@ def main():
 
 
 if __name__ == '__main__':
-    # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 1, 1)
-    # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 2, 2)
-    # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 3, 2)
-    # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 4, 2)
-    # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 5, 2)
-    # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 6, 2)
-    # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 7, 2)
-    # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 8, 2)
-    # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 9, 2)
-    # train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 10, 2)
-    main()
+    import multiprocessing
+
+     #processes added to solve memory leak
+
+    for i in range(100):
+        gc.collect()
+        try:
+            p = multiprocessing.Process(target=main, args=(i, epsilon,))
+            p.start()
+            p.join()
+            del p
+        except:
+            traceback.print_exc()
+            p = None
+        # main(i)
+        gc.collect()
+        time.sleep(5)
+        gc.collect()
+        epsilon = epsilon * (1 - epsilon_decay)
