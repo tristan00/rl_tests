@@ -297,7 +297,6 @@ class Game():
             b1.give_feedback(i5, i6, i1, fs1)
             b2.give_feedback(i6, i5, i2, fs2)
 
-        print('total game', game_count, 'scores:', sum(score1_history)/len(score1_history), sum(score2_history)/len(score2_history), epsilon)
         # print(move1_history)
         # print(score1_history)
         # print(move2_history)
@@ -310,13 +309,22 @@ class Game():
             # b1.train_dnn()
             # b2.train_dnn()
 
-        if learning and sum(score1_history)/len(score1_history) > sum(score2_history)/len(score2_history):
-            b1.elo = calculate_new_elo(1, b1.elo, b2.elo)
-            b2.elo = calculate_new_elo(0, b1.elo, b2.elo)
-        elif learning and sum(score1_history)/len(score1_history) < sum(score2_history)/len(score2_history):
-            b1.elo = calculate_new_elo(0, b1.elo, b2.elo)
-            b2.elo = calculate_new_elo(1, b1.elo, b2.elo)
-        self.score = sum(score1_history)/len(score1_history), sum(score2_history)/len(score2_history)
+        b1_score_final = sum(score1_history)/len(score1_history)
+        b2_score_final = sum(score2_history)/len(score2_history)
+
+        if learning:
+            b1.elo = calculate_new_elo(b1_score_final / (b2_score_final + b1_score_final), b1.elo, b2.elo)
+            b2.elo = calculate_new_elo(b2_score_final / (b2_score_final + b1_score_final), b2.elo, b1.elo)
+
+        print('total games', game_count, 'scores:', b1_score_final, b2_score_final, 'bots:',b1.get_id(),b2.get_id(),'elos:', b1.elo, b2.elo)
+
+        # if learning and sum(score1_history)/len(score1_history) > sum(score2_history)/len(score2_history):
+        #     b1.elo = calculate_new_elo(1, b1.elo, b2.elo)
+        #     b2.elo = calculate_new_elo(0, b1.elo, b2.elo)
+        # elif learning and sum(score1_history)/len(score1_history) < sum(score2_history)/len(score2_history):
+        #     b1.elo = calculate_new_elo(0, b1.elo, b2.elo)
+        #     b2.elo = calculate_new_elo(1, b1.elo, b2.elo)
+        self.score = b1_score_final, b2_score_final
 
 
 def classify_strat():
@@ -376,7 +384,7 @@ def rate_bots_comparative(bots):
 # for g_count in range(16,17):
 #     # bots = [DBot(i, history_len=2, model_depth=8) for i in range(g_count)]
 
-g_count = 32
+g_count = 40
 bots = []
 bots.append(DBot(0, history_len=100, model_depth=10, base_alg = 'tit_for_tat', trainable = False))
 bots.append(DBot(1, history_len=100, model_depth=10, base_alg = 'random', trainable = False))
@@ -417,7 +425,7 @@ for i in range(100000):
     if i % epsilon_decay_period ==0 and i > 0:
         epsilon = max(epsilon * (1 - epsilon_decay), min_epsilon)
 
-    if i%1000 == 0 and i > 0:
+    if i%5000 == 0 and i > 0:
         comp_df = rate_bots_comparative(bots)
         comp_df.to_csv('comp_res_{0}.csv'.format(i))
 comp_df = rate_bots_comparative(bots)
