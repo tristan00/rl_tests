@@ -28,6 +28,18 @@ epsilon = .001
 epsilon_decay = .1
 epsilon_decay_period = 10
 min_epsilon = .001
+maximum_elo = 10000
+minimum_elo = 10
+starting_elo = 1000
+
+def calculate_new_elo(outcome, player_1_elo, player_2_elo, k = 100):
+    expected_outcome = player_1_elo/(player_1_elo + player_2_elo)
+    new_elo = starting_elo
+    if k > 0:
+        new_elo =  player_1_elo + (k * (outcome-expected_outcome))
+
+    return min(maximum_elo, max(minimum_elo, new_elo))
+
 
 class DBot():
     def __init__(self, n, history_len = 5, model_depth = 6, base_alg = 'random', trainable = False):
@@ -40,6 +52,7 @@ class DBot():
         self.trainable = trainable
         self.x = []
         self.y = []
+        self.elo = starting_elo
 
         try:
             raise Exception()
@@ -296,6 +309,13 @@ class Game():
 
             # b1.train_dnn()
             # b2.train_dnn()
+
+        if learning and sum(score1_history)/len(score1_history) > sum(score2_history)/len(score2_history):
+            b1.elo = calculate_new_elo(1, b1.elo, b2.elo)
+            b2.elo = calculate_new_elo(0, b1.elo, b2.elo)
+        elif learning and sum(score1_history)/len(score1_history) < sum(score2_history)/len(score2_history):
+            b1.elo = calculate_new_elo(0, b1.elo, b2.elo)
+            b2.elo = calculate_new_elo(1, b1.elo, b2.elo)
         self.score = sum(score1_history)/len(score1_history), sum(score2_history)/len(score2_history)
 
 
@@ -337,17 +357,22 @@ def rate_bots_comparative(bots):
                 df.loc[b1.get_id(), b2.get_id()] = g1.score[0]
                 # res_array[b2.b_id, b1.b_id] = g1.score[1]
 
+    df['elo'] = 0
 
-    df = pd.DataFrame(data = res_array,
-                      index = [i.get_id() for i in bots],
-                      columns=[i.get_id() for i in bots])
+    for i in bots:
+        df.loc[i.get_id(), 'elo'] = i.elo
+
+
+    # df = pd.DataFrame(data = res_array,
+    #                   index = [i.get_id() for i in bots],
+    #                   columns=[i.get_id() for i in bots])
     return df
 
 
 # for g_count in range(16,17):
 #     # bots = [DBot(i, history_len=2, model_depth=8) for i in range(g_count)]
 
-g_count = 30
+g_count = 32
 bots = []
 bots.append(DBot(0, history_len=100, model_depth=10, base_alg = 'tit_for_tat', trainable = False))
 bots.append(DBot(1, history_len=100, model_depth=10, base_alg = 'random', trainable = False))
