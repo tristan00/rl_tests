@@ -12,7 +12,7 @@ from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import RandomForestRegressor
 
 
-total_rounds = 100
+total_rounds = 250
 max_iter =  100
 lgbm_params =  {
     'boosting_type': 'gbdt',
@@ -157,6 +157,11 @@ class DBot():
                 return 1
             if self.base_alg == 'cooperate':
                 return 0
+            if self.base_alg == 'tit_for_2tat':
+                if len(score_history) >= 2 and score_history[-1] == 1 and score_history[-2] == 1:
+                    return 1
+                else:
+                    return 0
         else:
 
             small_move_history = move_history[-self.history_len:]
@@ -189,7 +194,7 @@ class DBot():
 
 
 class Game():
-    def __init__(self, b1, b2, epsilon):
+    def __init__(self, b1, b2, epsilon, learning = True):
 
         move1_history = []
         move2_history = []
@@ -199,6 +204,7 @@ class Game():
         input2_1_history = []
         input1_2_history = []
         input2_2_history = []
+        self.learning = learning
 
         for _ in range(total_rounds):
             # b1_move = b1.predict_move(move1_history, score1_history, l_epsilon = epsilon)
@@ -270,7 +276,7 @@ class Game():
         # print(move2_history)
         # print(score2_history)
 
-        if random.random() > .9:
+        if random.random() > .9 and learning:
             b1.train_model()
             b2.train_model()
 
@@ -283,49 +289,67 @@ def classify_strat():
     pass
 
 
+
+def rate_Bot(b1):
+    test_bot1 = DBot(1, history_len=8, model_depth=8, base_alg = 'random', trainable = False)
+    test_bot2 = DBot(0, history_len=8, model_depth=8, base_alg = 'tit_for_tat', trainable = False)
+    test_bot3 = DBot(2, history_len=8, model_depth=8, base_alg='defect', trainable=False)
+    test_bot4 = DBot(3, history_len=8, model_depth=8, base_alg='cooperate', trainable=False)
+
+    g1 = Game(b1, test_bot1, 0.0, learning=False)
+    g2 = Game(b1, test_bot2, 0.0, learning=False)
+    g3 = Game(b1, test_bot3, 0.0, learning=False)
+    g4 = Game(b1, test_bot4, 0.0, learning=False)
+
+    #TODO: get number ratings for niceness and forgiveness
+
+
+
+    return g1.score, g2.score, g3.score, g4.score
+
+
+
 for g_count in range(8,9):
     # bots = [DBot(i, history_len=2, model_depth=8) for i in range(g_count)]
 
 
     bots = []
-    bots.append(DBot(0, history_len=10, model_depth=8, base_alg = 'tit_for_tat', trainable = False))
-    bots.append(DBot(1, history_len=10, model_depth=8, base_alg = 'random', trainable = False))
-    bots.append(DBot(2, history_len=10, model_depth=8, base_alg='defect', trainable=False))
-    bots.append(DBot(3, history_len=10, model_depth=8, base_alg='cooperate', trainable=False))
-    bots.append(DBot(4, history_len=10, model_depth=8, base_alg = 'tit_for_tat', trainable = False))
-    bots.append(DBot(5, history_len=10, model_depth=8, base_alg = 'tit_for_tat', trainable = False))
-
+    bots.append(DBot(0, history_len=8, model_depth=10, base_alg = 'tit_for_tat', trainable = False))
+    bots.append(DBot(1, history_len=8, model_depth=10, base_alg = 'random', trainable = False))
+    bots.append(DBot(2, history_len=8, model_depth=10, base_alg='defect', trainable=False))
+    bots.append(DBot(3, history_len=8, model_depth=10, base_alg='cooperate', trainable=False))
+    bots.append(DBot(4, history_len=8, model_depth=10, base_alg='tit_for_2tat', trainable=False))
 
     for i in range(g_count):
-        bots.append(DBot(i+6, history_len=10, model_depth=8, base_alg='random', trainable=True))
+        bots.append(DBot(i+5, history_len=8, model_depth=10, base_alg='random', trainable=True))
 
     scores = []
     score_list = []
 
-    for i in range(100000):
+    for i in range(50000):
         random.shuffle(bots)
         b1 = bots[0]
         b2 = bots[1]
         print(i, epsilon, b1.b_id, b2.b_id)
 
         g = Game(b1, b2, epsilon)
-        scores.append({'s_{0}_score'.format(b1.b_id):g.score[0], 's_{0}_history_len'.format(b1.b_id):b1.history_len,
-                       's_{0}_history_len'.format(b2.b_id):b1.history_len, 's_{0}_model_depth'.format(b1.b_id): b1.history_len,
-                       's_{0}_model_depth'.format(b2.b_id): b1.history_len, 's_{0}_score'.format(b2.b_id):g.score[1]})
+        scores.append({'s_{0}_score'.format(b1.b_id):g.score[0],
+                       # 's_{0}_history_len'.format(b1.b_id):b1.history_len,
+                       # 's_{0}_history_len'.format(b2.b_id):b1.history_len, 's_{0}_model_depth'.format(b1.b_id): b1.history_len,
+                       # 's_{0}_model_depth'.format(b2.b_id): b1.history_len,
+                       's_{0}_score'.format(b2.b_id):g.score[1]})
         df = pd.DataFrame.from_dict(scores)
         df.to_csv('res_{0}.csv'.format(g_count), index = False)
 
-        if b1.b_id > 5:
+        if b1.b_id > 4 and b2.b_id > 4:
             score_list.append(g.score[0])
-        if b2.b_id > 5:
             score_list.append(g.score[1])
 
         if len(score_list) > 0:
-            print(sum(score_list[-100:])/len(score_list[-100:]))
+            print(sum(score_list[-2000:])/len(score_list[-2000:]))
         # if len(score_list) > 100 and sum(score_list[-100:])/len(score_list[-100:]) > 2.95:
         #     break
 
-
-
         if i % epsilon_decay_period ==0 and i > 0:
             epsilon = max(epsilon * (1 - epsilon_decay), min_epsilon)
+
