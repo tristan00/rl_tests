@@ -11,8 +11,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import RandomForestRegressor
 
-
-total_rounds = 250
+max_rounds = 250
+chance_to_stop = .01
 max_iter =  100
 lgbm_params =  {
     'boosting_type': 'gbdt',
@@ -49,6 +49,13 @@ class DBot():
             traceback.print_exc()
             self.model = None
             self.use_model = False
+
+
+    def get_id(self):
+        if self.trainable:
+            return str(self.b_id) + '_' + self.base_alg + '_' + 'trainable' + '_model_depth_' + str(self.model_depth)
+        else:
+            return str(self.b_id) + '_' + self.base_alg + '_' + 'not_trainable'
 
 
     def train_dnn(self):
@@ -107,7 +114,8 @@ class DBot():
             print('training model')
             x = np.array(self.x)
             y = np.array(self.y)
-            self.model = RandomForestRegressor(max_depth=self.model_depth, n_estimators=10)
+            # self.model = RandomForestRegressor(max_depth=self.model_depth, n_estimators=10)
+            self.model = DecisionTreeRegressor(max_depth=self.model_depth)
             self.model.fit(x, y)
             # train_x, val_x, train_y, val_y = train_test_split(x, y, test_size=.01, random_state=1)
             # lgtrain = lgb.Dataset(train_x, train_y)
@@ -206,7 +214,9 @@ class Game():
         input2_2_history = []
         self.learning = learning
 
-        for _ in range(total_rounds):
+
+        game_count = 0
+        for game_count in range(max_rounds):
             # b1_move = b1.predict_move(move1_history, score1_history, l_epsilon = epsilon)
             # b2_move = b2.predict_move(move2_history, score2_history, l_epsilon = epsilon)
 
@@ -246,7 +256,11 @@ class Game():
             move1_history.append(b1_move)
             move2_history.append(b2_move)
 
+            if random.random() < chance_to_stop and learning:
+                break
 
+        self.move1_history = move1_history
+        self.move2_history = move2_history
         s1 = sum(score1_history)/len(score1_history)
         s2 = sum(score2_history)/len(score2_history)
 
@@ -270,7 +284,7 @@ class Game():
             b1.give_feedback(i5, i6, i1, fs1)
             b2.give_feedback(i6, i5, i2, fs2)
 
-        print(sum(score1_history)/len(score1_history), sum(score2_history)/len(score2_history), epsilon)
+        print('total game', game_count, 'scores:', sum(score1_history)/len(score1_history), sum(score2_history)/len(score2_history), epsilon)
         # print(move1_history)
         # print(score1_history)
         # print(move2_history)
@@ -290,7 +304,7 @@ def classify_strat():
 
 
 
-def rate_Bot(b1):
+def rate_bot(b1):
     test_bot1 = DBot(1, history_len=8, model_depth=8, base_alg = 'random', trainable = False)
     test_bot2 = DBot(0, history_len=8, model_depth=8, base_alg = 'tit_for_tat', trainable = False)
     test_bot3 = DBot(2, history_len=8, model_depth=8, base_alg='defect', trainable=False)
@@ -302,54 +316,83 @@ def rate_Bot(b1):
     g4 = Game(b1, test_bot4, 0.0, learning=False)
 
     #TODO: get number ratings for niceness and forgiveness
-
-
-
     return g1.score, g2.score, g3.score, g4.score
 
 
+def rate_bots_comparative(bots):
+    res_array = np.zeros((len(bots), len(bots)))
 
-for g_count in range(8,9):
-    # bots = [DBot(i, history_len=2, model_depth=8) for i in range(g_count)]
+    df = pd.DataFrame(data = res_array,
+                      index = [i.get_id() for i in bots],
+                      columns=[i.get_id() for i in bots])
+
+    for count1, b1 in enumerate(bots):
+        for count2, b2 in enumerate(bots):
+            if b1.b_id != b2.b_id:
+                print(b1.b_id, b2.b_id)
+                if (b1.b_id == 3 and b2.b_id == 2):
+                    print('here')
+
+                g1 = Game(b1, b2, 0.0, learning=False)
+                df.loc[b1.get_id(), b2.get_id()] = g1.score[0]
+                # res_array[b2.b_id, b1.b_id] = g1.score[1]
 
 
-    bots = []
-    bots.append(DBot(0, history_len=8, model_depth=10, base_alg = 'tit_for_tat', trainable = False))
-    bots.append(DBot(1, history_len=8, model_depth=10, base_alg = 'random', trainable = False))
-    bots.append(DBot(2, history_len=8, model_depth=10, base_alg='defect', trainable=False))
-    bots.append(DBot(3, history_len=8, model_depth=10, base_alg='cooperate', trainable=False))
-    bots.append(DBot(4, history_len=8, model_depth=10, base_alg='tit_for_2tat', trainable=False))
+    df = pd.DataFrame(data = res_array,
+                      index = [i.get_id() for i in bots],
+                      columns=[i.get_id() for i in bots])
+    return df
 
-    for i in range(g_count):
-        bots.append(DBot(i+5, history_len=8, model_depth=10, base_alg='random', trainable=True))
 
-    scores = []
-    score_list = []
+# for g_count in range(16,17):
+#     # bots = [DBot(i, history_len=2, model_depth=8) for i in range(g_count)]
 
-    for i in range(50000):
-        random.shuffle(bots)
-        b1 = bots[0]
-        b2 = bots[1]
-        print(i, epsilon, b1.b_id, b2.b_id)
+g_count = 30
+bots = []
+bots.append(DBot(0, history_len=100, model_depth=10, base_alg = 'tit_for_tat', trainable = False))
+bots.append(DBot(1, history_len=100, model_depth=10, base_alg = 'random', trainable = False))
+bots.append(DBot(2, history_len=100, model_depth=10, base_alg='defect', trainable=False))
+bots.append(DBot(3, history_len=100, model_depth=10, base_alg='cooperate', trainable=False))
+bots.append(DBot(4, history_len=100, model_depth=10, base_alg='tit_for_2tat', trainable=False))
 
-        g = Game(b1, b2, epsilon)
-        scores.append({'s_{0}_score'.format(b1.b_id):g.score[0],
-                       # 's_{0}_history_len'.format(b1.b_id):b1.history_len,
-                       # 's_{0}_history_len'.format(b2.b_id):b1.history_len, 's_{0}_model_depth'.format(b1.b_id): b1.history_len,
-                       # 's_{0}_model_depth'.format(b2.b_id): b1.history_len,
-                       's_{0}_score'.format(b2.b_id):g.score[1]})
-        df = pd.DataFrame.from_dict(scores)
-        df.to_csv('res_{0}.csv'.format(g_count), index = False)
+for i in range(g_count):
+    bots.append(DBot(i+5, history_len=100, model_depth=random.randint(2, 20), base_alg='random', trainable=True))
 
-        if b1.b_id > 4 and b2.b_id > 4:
-            score_list.append(g.score[0])
-            score_list.append(g.score[1])
+scores = []
+score_list = []
 
-        if len(score_list) > 0:
-            print(sum(score_list[-2000:])/len(score_list[-2000:]))
-        # if len(score_list) > 100 and sum(score_list[-100:])/len(score_list[-100:]) > 2.95:
-        #     break
+for i in range(100000):
+    random.shuffle(bots)
+    b1 = bots[0]
+    b2 = bots[1]
+    print(i, epsilon, b1.b_id, b2.b_id)
 
-        if i % epsilon_decay_period ==0 and i > 0:
-            epsilon = max(epsilon * (1 - epsilon_decay), min_epsilon)
+    g = Game(b1, b2, epsilon)
+    scores.append({'s_{0}_score'.format(b1.b_id):g.score[0],
+                   # 's_{0}_history_len'.format(b1.b_id):b1.history_len,
+                   # 's_{0}_history_len'.format(b2.b_id):b1.history_len, 's_{0}_model_depth'.format(b1.b_id): b1.history_len,
+                   # 's_{0}_model_depth'.format(b2.b_id): b1.history_len,
+                   's_{0}_score'.format(b2.b_id):g.score[1]})
+    df = pd.DataFrame.from_dict(scores)
+    df.to_csv('res_{0}.csv'.format(g_count), index = False)
+
+    if b1.b_id > 4 and b2.b_id > 4:
+        score_list.append(g.score[0])
+        score_list.append(g.score[1])
+
+    if len(score_list) > 0:
+        print('trailing results', sum(score_list[-1000:])/len(score_list[-1000:]), len(score_list[-1000:]))
+    # if len(score_list) > 100 and sum(score_list[-100:])/len(score_list[-100:]) > 2.95:
+    #     break
+
+    if i % epsilon_decay_period ==0 and i > 0:
+        epsilon = max(epsilon * (1 - epsilon_decay), min_epsilon)
+
+    if i%5000 == 0 and i > 0:
+        comp_df = rate_bots_comparative(bots)
+        comp_df.to_csv('comp_res_{0}.csv'.format(i))
+comp_df = rate_bots_comparative(bots)
+comp_df.to_csv('comp_res_final.csv')
+# for i in bots:
+#     print(i.b_id, rate_Bot(i))
 
