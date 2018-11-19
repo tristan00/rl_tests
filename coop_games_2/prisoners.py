@@ -362,6 +362,10 @@ def rate_bots_comparative(bots):
     for i in bots:
         df.loc[i.get_id(), 'elo'] = i.elo
 
+    df['average'] = df[[i.get_id() for i in bots]].mean(axis = 1)
+    df['stddev'] = df[[i.get_id() for i in bots]].std(axis = 1)
+    df['median'] = df[[i.get_id() for i in bots]].median(axis = 1)
+
 
     # df = pd.DataFrame(data = res_array,
     #                   index = [i.get_id() for i in bots],
@@ -413,7 +417,7 @@ for i in range(100000):
     if i % epsilon_decay_period ==0 and i > 0:
         epsilon = max(epsilon * (1 - epsilon_decay), min_epsilon)
 
-    if i%5000 == 0 and i > 0:
+    if i%1000 == 0 and i > 0:
         comp_df = rate_bots_comparative(bots)
         comp_df.to_csv('comp_res_{0}.csv'.format(i))
 comp_df = rate_bots_comparative(bots)
