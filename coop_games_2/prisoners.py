@@ -17,7 +17,7 @@ elo_k = elo_d/10
 chance_to_stop = .01
 max_iter =  100
 forward_view = 10
-max_training_size = 100000
+max_training_size = 500000
 
 g_preset = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0,
       0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0,
@@ -73,7 +73,7 @@ def calculate_new_elo(outcome, player_1_elo, player_2_elo):
 
 
 class DBot():
-    def __init__(self, n, history_len = 5, model_depth = 1, base_alg = 'random', trainable = False):
+    def __init__(self, n, history_len = 5, model_depth = 1, base_alg = 'random', trainable = False, generation = 0):
         self.b_id = n
         self.base_alg = base_alg
         self.history_len = history_len
@@ -86,6 +86,7 @@ class DBot():
         self.elo = starting_elo
         self.flag_1 = 0
         self.move_count = 0
+        self.generation = generation
 
         self.feature_names = ['agent_move_{0}_moves_past'.format(i) for i in range(self.history_len - 1, -1, -1)] + \
         ['opponent_move_{0}_moves_past'.format(i) for i in range(self.history_len, 0, -1)] + ['next_move']
@@ -109,7 +110,7 @@ class DBot():
 
     def get_id(self):
         if self.trainable:
-            return str(self.b_id) + '_' + self.base_alg + '_' + 'trainable' + '_model_depth_' + str(self.model_depth)
+            return str(self.b_id) + '_' + 'generation_' + str(self.generation) + '_' + self.base_alg + '_' + 'trainable' + '_model_depth_' + str(self.model_depth)
         else:
             return str(self.b_id) + '_' + self.base_alg + '_' + 'not_trainable'
 
@@ -174,7 +175,8 @@ class DBot():
 
             if x.shape[0] > max_training_size:
                 print('agent {0} sampling'.format(self.b_id))
-                x, _, y, _ = train_test_split(x, y, train_size = max_training_size)
+                sample_portion = 1- max_training_size/x.shape[0]
+                x, _, y, _ = train_test_split(x, y, test_size = sample_portion)
 
             # self.model = RandomForestRegressor(max_depth=self.model_depth, n_estimators=10)
             self.model = DecisionTreeRegressor(max_depth=self.model_depth)
@@ -450,7 +452,7 @@ def rate_bots_comparative(bots):
                 # res_array[b2.b_id, b1.b_id] = g1.score[1]
                 average += g1.score[0]
         average = average / (len(bots)-1)
-        ratings.append({'bot':b1, 'average':average})
+        ratings.append({'bot':b1, 'average':average, 'score':average})
 
 
     df['elo'] = 0
@@ -491,7 +493,7 @@ def rate_bots_comparative(bots):
 # for g_count in range(16,17):
 #     # bots = [DBot(i, history_len=2, model_depth=8) for i in range(g_count)]
 
-g_count = 4
+max_count = 16
 bots = []
 bots.append(DBot(0, history_len=50, model_depth=1, base_alg = 'tit_for_tat', trainable = False))
 bots.append(DBot(1, history_len=50, model_depth=1, base_alg = 'random', trainable = False))
@@ -499,18 +501,24 @@ bots.append(DBot(2, history_len=50, model_depth=1, base_alg='defect', trainable=
 bots.append(DBot(3, history_len=50, model_depth=1, base_alg='cooperate', trainable=False))
 bots.append(DBot(4, history_len=50, model_depth=1, base_alg='tit_for_2tat', trainable=False))
 
-for i in range(g_count):
-    bots.append(DBot(i+5, history_len=50, model_depth=random.randint(3, 10), base_alg='random', trainable=True))
+g_count = 5
+
+for i in range(g_count, max_count):
+    bots.append(DBot(i, history_len=50, model_depth=random.randint(3, 10), base_alg='random', trainable=True))
+g_count = max_count
 
 
-max_count = g_count + 5
+print(len(bots))
+
+# max_count = g_count + 5
 scores = []
 score_list = []
 
-base_retraining_frequency = .2
+base_retraining_frequency = .5
 generations = 1000
+decay_period = 1000
 
-for g in range(generations):
+for gen_id in range(generations):
 
     for i in range(100000):
         random.shuffle(bots)
@@ -518,7 +526,7 @@ for g in range(generations):
         b2 = bots[1]
         print(i, epsilon, b1.b_id, b2.b_id)
 
-        g = Game(b1, b2, epsilon, retraining_frequency = base_retraining_frequency*(.5**(i/5000)))
+        g = Game(b1, b2, epsilon, retraining_frequency = base_retraining_frequency*(.5**(i/decay_period)))
         scores.append({'s_{0}_score'.format(b1.b_id):g.score[0],
                        # 's_{0}_history_len'.format(b1.b_id):b1.history_len,
                        # 's_{0}_history_len'.format(b2.b_id):b1.history_len, 's_{0}_model_depth'.format(b1.b_id): b1.history_len,
@@ -532,31 +540,34 @@ for g in range(generations):
             score_list.append(g.score[1])
 
         if len(score_list) > 0:
-            print('trailing results', sum(score_list[-1000:])/len(score_list[-1000:]), len(score_list[-1000:]))
+            print('trailing results', gen_id, sum(score_list[-1000:])/len(score_list[-1000:]), len(score_list[-1000:]))
 
         if i % epsilon_decay_period ==0 and i > 0:
             epsilon = max(epsilon * (1 - epsilon_decay), min_epsilon)
 
-        if i%5000 == 0 and i > 0:
+        if i%10000 == 0 and i > 0:
+
+            for b in bots:
+                b.train_model()
+
             comp_df, ratings = rate_bots_comparative(bots)
-            comp_df.to_csv('comp_res_{0}.csv'.format(g))
+            print(gen_id)
+            comp_df.to_csv('comp_res_{0}.csv'.format(gen_id))
             ratings.sort(key = lambda x: x['average'], reverse = True)
 
-            print('generation : {0}'.format(g))
-            for i in [ratings for b in ratings][:len(ratings)/2]:
-                print('selecting bot: {0}'.format(i['bot'].get_id()))
-            for i in [ratings for b in ratings][len(ratings)/2:]:
-                print('regecting bot: {0}'.format(i['bot'].get_id()))
+            print('generation : {0}'.format(gen_id))
+            for i in [b for b in ratings][:int(len(ratings)/2)]:
+                print('selecting bot: {0}, {1}'.format(i['bot'].get_id(), i['score']))
+            for i in [b for b in ratings][int(len(ratings)/2):]:
+                print('rejecting bot: {0}, {1}'.format(i['bot'].get_id(), i['score']))
 
 
-            bots = [ratings['bot'] for b in ratings][:len(ratings)/2]
+            bots = [b['bot'] for b in ratings][:int(len(ratings)/2)]
 
-            for b in range(len(ratings)/2):
+            for b in range(int(len(ratings)/2)):
                 max_count += 1
-                bots.append(DBot(max_count, history_len=50, model_depth=random.randint(3, 10), base_alg='random', trainable=True))
+                bots.append(DBot(max_count, history_len=50, model_depth=random.randint(3, 10), base_alg='random', trainable=True, generation=gen_id))
             break
-
-
 
 
 comp_df = rate_bots_comparative(bots)
