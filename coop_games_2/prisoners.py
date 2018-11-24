@@ -17,7 +17,7 @@ elo_k = elo_d/10
 chance_to_stop = .01
 max_iter =  100
 forward_view = 10
-max_training_size = 500000
+max_training_size = 100000
 
 g_preset = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0,
       0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0,
@@ -493,7 +493,7 @@ def rate_bots_comparative(bots):
 # for g_count in range(16,17):
 #     # bots = [DBot(i, history_len=2, model_depth=8) for i in range(g_count)]
 
-max_count = 16
+max_count = 32
 bots = []
 bots.append(DBot(0, history_len=50, model_depth=1, base_alg = 'tit_for_tat', trainable = False))
 bots.append(DBot(1, history_len=50, model_depth=1, base_alg = 'random', trainable = False))
@@ -514,9 +514,9 @@ print(len(bots))
 scores = []
 score_list = []
 
-base_retraining_frequency = .5
+base_retraining_frequency = .1
 generations = 1000
-decay_period = 1000
+decay_period = 2500
 
 for gen_id in range(generations):
 
