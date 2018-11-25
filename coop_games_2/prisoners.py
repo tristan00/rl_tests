@@ -23,7 +23,7 @@ base_retraining_frequency = .1
 generations = 1000
 decay_period = 1000
 survival_rate = .5
-generation_training_size = 25000
+generation_training_size = 2500
 max_training_size = 100000
 
 g_preset = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0,
@@ -503,7 +503,7 @@ def rate_bots_comparative(bots, gen_id):
 # for g_count in range(16,17):
 #     # bots = [DBot(i, history_len=2, model_depth=8) for i in range(g_count)]
 
-max_num_of_bots = 32
+max_num_of_bots = 16
 max_count = max_num_of_bots
 bots = []
 bots.append(DBot(0, history_len=50, model_depth=1, base_alg = 'tit_for_tat', trainable = False))
@@ -511,7 +511,7 @@ bots.append(DBot(1, history_len=50, model_depth=1, base_alg = 'random', trainabl
 bots.append(DBot(2, history_len=50, model_depth=1, base_alg='defect', trainable=False))
 bots.append(DBot(3, history_len=50, model_depth=1, base_alg='cooperate', trainable=False))
 bots.append(DBot(4, history_len=50, model_depth=1, base_alg='tit_for_2tat', trainable=False))
-bots.append(DBot(5, history_len=50, model_depth=1, base_alg = 'tit_for_tat', trainable = False))
+# bots.append(DBot(5, history_len=50, model_depth=1, base_alg = 'tit_for_tat', trainable = False))
 
 
 g_count = 5
@@ -547,8 +547,10 @@ for gen_id in range(generations):
                        # 's_{0}_history_len'.format(b2.b_id):b1.history_len, 's_{0}_model_depth'.format(b1.b_id): b1.history_len,
                        # 's_{0}_model_depth'.format(b2.b_id): b1.history_len,
                        's_{0}_score'.format(b2.b_id):g.score[1]})
-        df = pd.DataFrame.from_dict(scores)
-        df.to_csv('res_{0}.csv'.format(g_count), index = False)
+
+        if i % 5000 == 0 and i > 0:
+            df = pd.DataFrame.from_dict(scores)
+            df.to_csv('res_{0}.csv'.format(g_count), index = False)
 
         if b1.b_id > 4 and b2.b_id > 4:
             score_list.append(g.score[0])
