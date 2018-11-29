@@ -21,10 +21,32 @@ max_iter =  100
 forward_view = 10
 base_retraining_frequency = .1
 generations = 1000
-decay_period = 1000
-survival_rate = .5
-generation_training_size = 2500
+decay_period = 100
+survival_rate = .9
+generation_training_size = 10000
 max_training_size = 100000
+max_num_of_bots = 128
+lgbm_params =  {
+    'boosting_type': 'gbdt',
+    'objective': 'regression',
+    'metric': 'l1',
+    "learning_rate": 0.01,
+    "max_depth": -1,
+    'num_leaves':127
+    }
+
+path = r'C:\Users\trist\Documents\prisoner_models\saved_games/'
+sum_path =r'C:\Users\trist\Documents\prisoner_models\saved_data/'
+epsilon = .001
+epsilon_decay = .1
+epsilon_decay_period = 10
+min_epsilon = .25
+maximum_elo = 10000
+minimum_elo = 10
+starting_elo = 1000
+prob_of_trainable = .95
+rating_prob = .5
+base_algorithms =  ['tit_for_tat', 'random', 'defect', 'no_forgiveness', 'tit_for_2tat', 'cooperate']
 
 g_preset = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0,
       0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0,
@@ -55,23 +77,7 @@ g_preset = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0,
       1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1,
       1]
 
-lgbm_params =  {
-    'boosting_type': 'gbdt',
-    'objective': 'regression',
-    'metric': 'l1',
-    "learning_rate": 0.01,
-    "max_depth": -1,
-    'num_leaves':127
-    }
 
-path = r'C:\Users\trist\Documents\prisoner_models/'
-epsilon = .001
-epsilon_decay = .1
-epsilon_decay_period = 10
-min_epsilon = .25
-maximum_elo = 10000
-minimum_elo = 10
-starting_elo = 1000
 
 def calculate_new_elo(outcome, player_1_elo, player_2_elo):
     expected_outcome = 1 / (1 + 10**((player_2_elo - player_1_elo)/elo_d))
@@ -80,7 +86,8 @@ def calculate_new_elo(outcome, player_1_elo, player_2_elo):
 
 
 class DBot():
-    def __init__(self, n, history_len = 5, model_depth = 1, base_alg = 'random', trainable = False, generation = 0, base_training_rate = .1, decay_period = 100):
+    def __init__(self, n, history_len = 5, model_depth = 1, base_alg = 'random', trainable = False, generation = 0,
+                 base_training_rate = .1, decay_period = 10, use_reputation = 0, base_alg_random_prob = 0):
         self.b_id = n
         self.base_alg = base_alg
         self.history_len = history_len
@@ -98,13 +105,37 @@ class DBot():
         self.base_training_rate = base_training_rate
         self.decay_period = decay_period
         self.epsilon = 1.0
+        self.base_alg_random_prob = base_alg_random_prob
+        if use_reputation == 1:
+            self.use_reputation = True
+        else:
+            self.use_reputation = False
 
-        self.feature_names = ['agent_move_{0}_moves_past'.format(i) for i in range(self.history_len - 1, -1, -1)] + \
-        ['opponent_move_{0}_moves_past'.format(i) for i in range(self.history_len, 0, -1)] + ['next_move']
-        # print(self.feature_names)
+        if self.use_reputation:
+            rep_fetures = ['opponent_rep_first_move', 'opponent_rep_forgiveness', 'opponent_rep_retaliation', 'opponent_rep_uncalled_aggression', 'opponent_rep_score',
+             'opponent_rep_use_reputation', 'opponent_rep_generation', 'opponent_rep_elo', 'opponent_rep_games', 'opponent_rep_model_depth']
+
+            self.feature_names = ['agent_move_{0}_moves_past'.format(i) for i in range(self.history_len - 1, -1, -1)] + \
+                                 ['opponent_move_{0}_moves_past'.format(i) for i in range(self.history_len, 0, -1)] + [
+                                     'next_move'] + rep_fetures
+        else:
+            self.feature_names = ['agent_move_{0}_moves_past'.format(i) for i in range(self.history_len - 1, -1, -1)] + \
+            ['opponent_move_{0}_moves_past'.format(i) for i in range(self.history_len, 0, -1)] + ['next_move']
+            # print(self.feature_names)
 
         self.model = None
         self.use_model = False
+
+        #Characteristics:
+        self.first_move = -1
+        self.forgiveness = -1
+        self.retaliation = -1
+        self.uncalled_aggression = -1
+        self.score = -1
+
+
+    def get_reputation(self):
+        return [self.first_move, self.forgiveness, self.retaliation, self.uncalled_aggression, self.score, self.use_reputation, self.generation, self.elo, self.games, self.model_depth]
 
 
     def save_model(self):
@@ -115,59 +146,13 @@ class DBot():
 
     def get_id(self):
         if self.trainable or self.use_model:
-            return str(self.b_id) + '_' + 'generation_' + str(self.generation) + '_' + self.base_alg + '_' + 'trainable' + '_model_depth_' + str(self.model_depth)
+            if self.use_reputation:
+                return str(self.b_id) + '_' + 'generation_' + str(self.generation) + '_' + self.base_alg + '_' + 'trainable' + '_model_depth_' + str(self.model_depth) + '_using_reputation'
+            else:
+                return str(self.b_id) + '_' + 'generation_' + str(self.generation) + '_' + self.base_alg + '_' + 'trainable' + '_model_depth_' + str(self.model_depth) + '_not_using_reputation'
+
         else:
             return str(self.b_id) + '_' + self.base_alg + '_' + 'not_trainable'
-
-
-    def train_dnn(self):
-        if len(self.x) > 0:
-
-            x = np.array(self.x)
-            y = np.array(self.y)
-
-            self.scaler = StandardScaler()
-            x = x.astype(np.float32)
-            x = self.scaler.fit_transform(x)
-            train_x, val_x, train_y, val_y = train_test_split(x, y, test_size=.01, random_state=1)
-
-            m_input = layers.Input(shape=(9,), name = 'input')
-            mx = layers.Dense(1028, activation='relu', name='dl1')(m_input)
-            mx = layers.Dense(1028, activation='relu', name='dl2')(mx)
-            mx = layers.Dense(1, activation='relu', name='predictions1')(mx)
-            model = models.Model(inputs=m_input, outputs=mx, name='dnn')
-            model.compile('adam', loss='mean_squared_error')
-
-            if train_x.shape[0] < 2000:
-                chunk_size = 8
-            elif train_x.shape[0] < 4000:
-                chunk_size = 16
-            elif train_x.shape[0] < 8000:
-                chunk_size = 32
-            elif train_x.shape[0] < 16000:
-                chunk_size = 64
-            elif train_x.shape[0] < 32000:
-                chunk_size = 128
-            elif train_x.shape[0] < 64000:
-                chunk_size = 256
-            elif train_x.shape[0] < 128000:
-                chunk_size = 512
-            elif train_x.shape[0] < 256000:
-                chunk_size = 1024
-            elif train_x.shape[0] < 512000:
-                chunk_size = 2048
-            else:
-                chunk_size = 4096
-
-            cb1 = callbacks.EarlyStopping(monitor='val_loss', min_delta=0, patience=5, verbose=0, mode='auto')
-            cb2 = callbacks.ModelCheckpoint(path + '/agent_{0}_net.h5'.format(self.b_id), monitor='val_loss', verbose=0,
-                                            save_best_only=True,
-                                            save_weights_only=False, mode='auto', period=1)
-            model.fit(train_x, train_y, validation_data=(val_x, val_y), epochs=200,
-                    callbacks=[cb1, cb2], batch_size=chunk_size)
-            self.dnn = models.load_model(path + '/agent_{0}_net.h5'.format(self.b_id))
-            self.use_model = True
-
 
 
 
@@ -175,11 +160,13 @@ class DBot():
 
         training_prob = self.base_training_rate * (.5 ** (self.g_count / self.decay_period))
 
+        # print('training_prob', training_prob)
+
+
         if len(self.x) > 0 and self.trainable and (random.random() < training_prob or always):
             print('training model')
             x = np.array(self.x)
             y = np.array(self.y)
-
 
             if x.shape[0] > max_training_size:
                 print('agent {0} sampling'.format(self.b_id))
@@ -209,7 +196,7 @@ class DBot():
 
 
 
-    def give_feedback(self,  move_history1, move_history2, move, score):
+    def give_feedback(self,  move_history1, move_history2, move, score, opponent_reputation):
         small_move1_history = move_history1[-self.history_len:]
         small_move2_history = move_history2[-self.history_len:]
 
@@ -218,47 +205,22 @@ class DBot():
         while len(small_move2_history) < self.history_len:
             small_move2_history.insert(0, -1)
 
+        if self.use_reputation:
+            new_x = small_move1_history + small_move2_history + [move] + opponent_reputation
+        else:
+            new_x = small_move1_history + small_move2_history + [move]
 
-
-        new_x = small_move1_history + small_move2_history + [move]
         self.x.append(new_x)
         self.y.append(score)
 
 
-    def predict_move(self, b1_move_history, b2_move_history, opponent_id = 0, move_num = 0, l_epsilon = 1.0):
+    def predict_move(self, b1_move_history, b2_move_history, rep, opponent_id = 0, move_num = 0, l_epsilon = 1.0):
         # print(move_history, score_history)
 
         epsilon = self.epsilon * ((1 - epsilon_decay)**self.g_count)
+        # print('epsilon', epsilon)
 
-        if not self.use_model or random.random() < epsilon:
-            if self.base_alg == 'random':
-                return random.randint(0, 1)
-            if self.base_alg == 'tit_for_tat':
-                if b2_move_history and b2_move_history[-1] == 1:
-                    return 1
-                else:
-                    return 0
-            if self.base_alg == 'defect':
-                return 1
-            if self.base_alg == 'cooperate':
-                return 0
-            if self.base_alg == 'tit_for_2tat':
-                if len(b1_move_history) >= 2 and b2_move_history[-1] == 1 and b2_move_history[-2] == 1:
-                    return 1
-                else:
-                    return 0
-
-            if self.base_alg == 'preset':
-                return g_preset[self.move_count]
-
-            if self.base_alg == 'tester':
-                pass
-
-
-            if self.base_alg == 'tranquilizer':
-                pass
-        else:
-
+        if self.use_model and random.random() > epsilon:
             small_move_history = b1_move_history[-self.history_len:]
             small_score_history = b2_move_history[-self.history_len:]
 
@@ -267,8 +229,12 @@ class DBot():
             while len(small_score_history) < self.history_len:
                 small_score_history.insert(0, -1)
 
-            x1 = small_move_history + small_score_history + [1]
-            x0 = small_move_history + small_score_history + [0]
+            if self.use_reputation:
+                x1 = small_move_history + small_score_history + [1] + rep
+                x0 = small_move_history + small_score_history + [0] + rep
+            else:
+                x1 = small_move_history + small_score_history + [1]
+                x0 = small_move_history + small_score_history + [0]
 
             # dnn_input1 = self.scaler.transform(np.array([x1]).astype(np.float32))
             # dnn_input0 = self.scaler.transform(np.array([x0]).astype(np.float32))
@@ -285,13 +251,53 @@ class DBot():
                 return 1
             elif x1_val[0] < x0_val[0]:
                 return 0
+            # else:
+            #     return random.randint(0, 1)
+
+
+        if random.random() < self.base_alg_random_prob:
+            return random.randint(0, 1)
+        if self.base_alg == 'random':
+            return random.randint(0, 1)
+        if self.base_alg == 'tit_for_tat':
+            if b2_move_history and b2_move_history[-1] == 1:
+                return 1
             else:
-                return random.randint(0,1)
+                return 0
+        if self.base_alg == 'defect':
+            return 1
+        if self.base_alg == 'cooperate':
+            return 0
+        if self.base_alg == 'tit_for_2tat':
+            if len(b1_move_history) >= 2 and b2_move_history[-1] == 1 and b2_move_history[-2] == 1:
+                return 1
+            else:
+                return 0
+
+        if self.base_alg == 'preset':
+            return g_preset[self.move_count]
+
+        if self.base_alg == 'no_forgiveness':
+            if b2_move_history and b2_move_history[-1] == 1:
+                self.flag_1 = 1
+            if self.flag_1 == 1:
+                return 1
+            else:
+                return 0
+
+        if self.base_alg == 'tester':
+            pass
+
+        if self.base_alg == 'tranquilizer':
+            pass
+
+
 
 
 
 class Game():
     def __init__(self, b1, b2, learning = True, max_rounds = 250):
+
 
         b1.g_count += 1
         b2.g_count += 1
@@ -311,14 +317,16 @@ class Game():
         b1.move_count = 0
         b2.move_count = 0
 
+        b1_rep = b1.get_reputation()
+        b2_rep = b2.get_reputation()
 
         game_count = 0
         for game_count in range(max_rounds):
             # b1_move = b1.predict_move(move1_history, score1_history, l_epsilon = epsilon)
             # b2_move = b2.predict_move(move2_history, score2_history, l_epsilon = epsilon)
 
-            b1_move = b1.predict_move(move1_history, move2_history, l_epsilon = epsilon)
-            b2_move = b2.predict_move(move2_history, move1_history, l_epsilon = epsilon)
+            b1_move = b1.predict_move(move1_history, move2_history, b2_rep)
+            b2_move = b2.predict_move(move2_history, move1_history, b1_rep)
 
             input1_1_history.append(copy.deepcopy(move1_history))
             input1_2_history.append(copy.deepcopy(score1_history))
@@ -381,8 +389,8 @@ class Game():
 
             fs1 = sum(score1_history[count:count+b1.history_len])/len(score1_history[count:count+b1.history_len])
             fs2 = sum(score2_history[count:count+b2.history_len])/len(score2_history[count:count+b2.history_len])
-            b1.give_feedback(i5, i6, i1, fs1)
-            b2.give_feedback(i6, i5, i2, fs2)
+            b1.give_feedback(i5, i6, i1, fs1, b2_rep)
+            b2.give_feedback(i6, i5, i2, fs2, b1_rep)
 
         # print(move1_history)
         # print(score1_history)
@@ -446,52 +454,95 @@ def get_character(b):
 def rate_bots_comparative(bots, gen_id):
     res_array = np.zeros((len(bots), len(bots)))
 
+    for i in  range(len(bots)):
+        for j in range(len(bots)):
+            res_array[i, j] = np.nan
+
     df = pd.DataFrame(data = res_array,
                       index = [i.get_id() for i in bots],
                       columns=[i.get_id() for i in bots])
     ratings = []
 
+    comp_num = int(max(len(bots) * rating_prob, 2))
+
     for count1, b1 in enumerate(bots):
         average = 0
-        for count2, b2 in enumerate(bots):
+        comp_bots = [b for b in bots if b.b_id != b1.b_id]
+        comp_bots = random.sample(comp_bots, comp_num)
+
+        for count2, b2 in enumerate(comp_bots):
             if b1.b_id != b2.b_id:
                 print(b1.b_id, b2.b_id)
                 g1 = Game(b1, b2, learning=False)
                 df.loc[b1.get_id(), b2.get_id()] = g1.score[0]
                 # res_array[b2.b_id, b1.b_id] = g1.score[1]
                 average += g1.score[0]
-        average = average / (len(bots)-1)
+        average = average / comp_num
+        b1.score = average
         ratings.append({'bot':b1, 'average':average, 'score':average})
 
+    df['average'] = df[[i.get_id() for i in bots]].mean(axis = 1)
+    df['stddev'] = df[[i.get_id() for i in bots]].std(axis = 1)
+    df['median'] = df[[i.get_id() for i in bots]].median(axis = 1)
 
     df['elo'] = 0
+    df['trainable'] = 0
 
     for i in bots:
         df.loc[i.get_id(), 'elo'] = i.elo
+        df.loc[i.get_id(), 'generation'] = i.generation
+        df.loc[i.get_id(), 'depth'] = i.model_depth
+
+        if i.trainable:
+            df.loc[i.get_id(), 'trainable'] = 1
+        else:
+            df.loc[i.get_id(), 'trainable'] = 0
 
 
     df['model_depth'] = 0
+    df['using_reputation'] = 0
+    df['base_alg_random_prob'] = 0
+
+    for i in base_algorithms:
+        df[i] = 0
+
 
     for i in bots:
         df.loc[i.get_id(), 'model_depth'] = i.model_depth
+        df.loc[i.get_id(), 'using_reputation'] = i.use_reputation
+        df.loc[i.get_id(), 'base_alg_random_prob'] = i.base_alg_random_prob
+
+        for j in base_algorithms:
+            if i.base_alg == j:
+                df.loc[i.get_id(), j] = 1
+            else:
+                df.loc[i.get_id(), j] = 0
+
 
     df['uncalled_aggression'] = 0
     df['retaliation'] = 0
     df['forgiveness'] = 0
     df['first_move'] = 0
+
     df['gen_id']= gen_id
 
     for i in bots:
         char_res = get_character(i)
+
+        i.uncalled_aggression = char_res[0]
+        i.retaliation = char_res[1]
+        i.forgiveness = char_res[2]
+        i.first_move = char_res[3]
+
         df.loc[i.get_id(), 'uncalled_aggression'] = char_res[0]
         df.loc[i.get_id(), 'retaliation'] = char_res[1]
         df.loc[i.get_id(), 'forgiveness'] = char_res[2]
         df.loc[i.get_id(), 'first_move'] = char_res[3]
 
+    df = df.fillna(df.mean())
 
-    df['average'] = df[[i.get_id() for i in bots]].mean(axis = 1)
-    df['stddev'] = df[[i.get_id() for i in bots]].std(axis = 1)
-    df['median'] = df[[i.get_id() for i in bots]].median(axis = 1)
+
+
 
 
     # df = pd.DataFrame(data = res_array,
@@ -503,34 +554,56 @@ def rate_bots_comparative(bots, gen_id):
 # for g_count in range(16,17):
 #     # bots = [DBot(i, history_len=2, model_depth=8) for i in range(g_count)]
 
-max_num_of_bots = 16
+
+def get_random_new_bot(b_count, generation, history_len=50):
+    base_alg = random.choice(base_algorithms)
+    use_reputation = random.randint(0, 1)
+    model_depth = random.randint(3, 14)
+
+    base_alg_random_prob = random.random() *0.1
+
+    if random.random() < prob_of_trainable:
+        trainable = True
+    else:
+        trainable = False
+
+    return DBot(b_count, history_len=history_len, model_depth=model_depth, base_alg=base_alg, trainable=trainable,
+         use_reputation=use_reputation, generation=generation, base_alg_random_prob=base_alg_random_prob)
+
+
 max_count = max_num_of_bots
+
+
 bots = []
-bots.append(DBot(0, history_len=50, model_depth=1, base_alg = 'tit_for_tat', trainable = False))
-bots.append(DBot(1, history_len=50, model_depth=1, base_alg = 'random', trainable = False))
-bots.append(DBot(2, history_len=50, model_depth=1, base_alg='defect', trainable=False))
-bots.append(DBot(3, history_len=50, model_depth=1, base_alg='cooperate', trainable=False))
-bots.append(DBot(4, history_len=50, model_depth=1, base_alg='tit_for_2tat', trainable=False))
+# bots.append(DBot(0, history_len=50, model_depth=1, base_alg = 'tit_for_tat', trainable = False))
+# bots.append(DBot(1, history_len=50, model_depth=1, base_alg = 'random', trainable = False))
+# bots.append(DBot(2, history_len=50, model_depth=1, base_alg='defect', trainable=False))
+# bots.append(DBot(3, history_len=50, model_depth=1, base_alg='no_forgiveness', trainable=False))
+# bots.append(DBot(4, history_len=50, model_depth=1, base_alg='tit_for_2tat', trainable=False))
 # bots.append(DBot(5, history_len=50, model_depth=1, base_alg = 'tit_for_tat', trainable = False))
 
+#
+# g_count = 5
+#
+# for i in range(g_count, max_count):
+#     bots.append(DBot(i, history_len=50, model_depth=random.randint(3, 14), base_alg='random', trainable=True, use_reputation=random.randint(0, 1)))
+# g_count = max_count
 
-g_count = 5
-
-for i in range(g_count, max_count):
-    bots.append(DBot(i, history_len=50, model_depth=random.randint(3, 10), base_alg='random', trainable=True))
-g_count = max_count
-
+for i in range(max_count):
+    bots.append(get_random_new_bot(i, 0, history_len=50))
+g_count = len(bots)
 
 for b in bots:
     print(b.get_id())
 
 print(len(bots))
-
 # max_count = g_count + 5
 scores = []
 score_list = []
 
+gen_data = []
 
+full_results = []
 
 for gen_id in range(generations):
     gc.collect()
@@ -548,10 +621,6 @@ for gen_id in range(generations):
                        # 's_{0}_model_depth'.format(b2.b_id): b1.history_len,
                        's_{0}_score'.format(b2.b_id):g.score[1]})
 
-        if i % 5000 == 0 and i > 0:
-            df = pd.DataFrame.from_dict(scores)
-            df.to_csv('res_{0}.csv'.format(g_count), index = False)
-
         if b1.b_id > 4 and b2.b_id > 4:
             score_list.append(g.score[0])
             score_list.append(g.score[1])
@@ -560,13 +629,39 @@ for gen_id in range(generations):
             print('trailing results', gen_id, sum(score_list[-1000:])/len(score_list[-1000:]), len(score_list[-1000:]))
 
         if i%generation_training_size == 0 and i > 0:
+            df = pd.DataFrame.from_dict(scores)
+            df.to_csv(sum_path + 'res_{0}.csv'.format(g_count), index = False)
 
-            for b in bots:
-                b.train_model(always=True)
+            # for b in bots:
+            #     b.train_model(always=True)
+
+
 
             comp_df, ratings = rate_bots_comparative(bots, gen_id)
+            full_results.append(comp_df)
+            new_gen_data = {'gen_id': gen_id,
+             'average': comp_df['average'].mean(),
+             'uncalled_aggression': comp_df['uncalled_aggression'].mean(),
+             'retaliation': comp_df['retaliation'].mean(),
+             'forgiveness': comp_df['forgiveness'].mean(),
+             'first_move': comp_df['first_move'].mean(),
+             'depth': comp_df['depth'].mean(),
+             'avg_generation': comp_df['generation'].mean(),
+             'using_reputation': comp_df['using_reputation'].mean(),
+             'trainable': comp_df['trainable'].mean()}
+
+            for b_a in base_algorithms:
+                new_gen_data.update({ b_a: comp_df[b_a].mean()})
+            gen_data.append(new_gen_data)
+
+            gen_df = pd.DataFrame.from_dict(gen_data)
+            gen_df.to_csv(sum_path + 'gen.csv', index = False)
+
+            full_results_df = pd.concat(full_results)
+            full_results_df.to_csv(sum_path + 'full_results.csv', index=False)
+
             print(gen_id)
-            comp_df.to_csv('comp_res_{0}.csv'.format(gen_id))
+            comp_df.to_csv(sum_path + 'comp_res_{0}.csv'.format(gen_id))
             ratings.sort(key = lambda x: x['average'], reverse = True)
 
             print('generation : {0}'.format(gen_id))
@@ -582,7 +677,8 @@ for gen_id in range(generations):
 
             while len(bots) < max_num_of_bots:
                 max_count += 1
-                bots.append(DBot(max_count, history_len=50, model_depth=random.randint(3, 10), base_alg='random', trainable=True, generation=gen_id + 1))
+                new_bot =  get_random_new_bot(max_count, gen_id + 1, history_len=50)
+                bots.append(new_bot)
             break
 
 
