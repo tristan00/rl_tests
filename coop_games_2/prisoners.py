@@ -45,8 +45,11 @@ maximum_elo = 10000
 minimum_elo = 10
 starting_elo = 1000
 prob_of_trainable = .95
-rating_prob = .5
-base_algorithms =  ['tit_for_tat', 'random', 'defect', 'no_forgiveness', 'tit_for_2tat', 'cooperate']
+rating_prob = .1
+
+# base_algorithms =  ['tit_for_tat', 'random', 'defect', 'no_forgiveness', 'tit_for_2tat', 'cooperate']
+base_algorithms =  ['{0}tit_for_{1}tat', 'random', 'defect', 'cooperate']
+max_data_size = 100000
 
 g_preset = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0,
       0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0,
@@ -87,7 +90,7 @@ def calculate_new_elo(outcome, player_1_elo, player_2_elo):
 
 class DBot():
     def __init__(self, n, history_len = 5, model_depth = 1, base_alg = 'random', trainable = False, generation = 0,
-                 base_training_rate = .1, decay_period = 10, use_reputation = 0, base_alg_random_prob = 0):
+                 base_training_rate = .1, decay_period = 10, use_reputation = 0, base_alg_random_prob = 0, alg_constants = (1, 1)):
         self.b_id = n
         self.base_alg = base_alg
         self.history_len = history_len
@@ -110,6 +113,12 @@ class DBot():
             self.use_reputation = True
         else:
             self.use_reputation = False
+
+        self.alg_constants = alg_constants
+        if base_alg == '{0}tit_for_{1}tat':
+            self.alt_base_alg = self.base_alg.format(alg_constants[0], alg_constants[1])
+        else:
+            self.alt_base_alg = self.base_alg
 
         if self.use_reputation:
             rep_fetures = ['opponent_rep_first_move', 'opponent_rep_forgiveness', 'opponent_rep_retaliation', 'opponent_rep_uncalled_aggression', 'opponent_rep_score',
@@ -147,12 +156,12 @@ class DBot():
     def get_id(self):
         if self.trainable or self.use_model:
             if self.use_reputation:
-                return str(self.b_id) + '_' + 'generation_' + str(self.generation) + '_' + self.base_alg + '_' + 'trainable' + '_model_depth_' + str(self.model_depth) + '_using_reputation'
+                return str(self.b_id) + '_' + 'generation_' + str(self.generation) + '_' + self.alt_base_alg + '_' + 'trainable' + '_model_depth_' + str(self.model_depth) + '_using_reputation'
             else:
-                return str(self.b_id) + '_' + 'generation_' + str(self.generation) + '_' + self.base_alg + '_' + 'trainable' + '_model_depth_' + str(self.model_depth) + '_not_using_reputation'
+                return str(self.b_id) + '_' + 'generation_' + str(self.generation) + '_' + self.alt_base_alg + '_' + 'trainable' + '_model_depth_' + str(self.model_depth) + '_not_using_reputation'
 
         else:
-            return str(self.b_id) + '_' + self.base_alg + '_' + 'not_trainable'
+            return str(self.b_id) + '_' + self.alt_base_alg + '_' + 'not_trainable'
 
 
 
@@ -197,21 +206,22 @@ class DBot():
 
 
     def give_feedback(self,  move_history1, move_history2, move, score, opponent_reputation):
-        small_move1_history = move_history1[-self.history_len:]
-        small_move2_history = move_history2[-self.history_len:]
+        if len(self.x) < max_data_size:
+            small_move1_history = move_history1[-self.history_len:]
+            small_move2_history = move_history2[-self.history_len:]
 
-        while len(small_move1_history) < self.history_len:
-            small_move1_history.insert(0, -1)
-        while len(small_move2_history) < self.history_len:
-            small_move2_history.insert(0, -1)
+            while len(small_move1_history) < self.history_len:
+                small_move1_history.insert(0, -1)
+            while len(small_move2_history) < self.history_len:
+                small_move2_history.insert(0, -1)
 
-        if self.use_reputation:
-            new_x = small_move1_history + small_move2_history + [move] + opponent_reputation
-        else:
-            new_x = small_move1_history + small_move2_history + [move]
+            if self.use_reputation:
+                new_x = small_move1_history + small_move2_history + [move] + opponent_reputation
+            else:
+                new_x = small_move1_history + small_move2_history + [move]
 
-        self.x.append(new_x)
-        self.y.append(score)
+            self.x.append(new_x)
+            self.y.append(score)
 
 
     def predict_move(self, b1_move_history, b2_move_history, rep, opponent_id = 0, move_num = 0, l_epsilon = 1.0):
@@ -254,25 +264,43 @@ class DBot():
             # else:
             #     return random.randint(0, 1)
 
-
         if random.random() < self.base_alg_random_prob:
             return random.randint(0, 1)
         if self.base_alg == 'random':
             return random.randint(0, 1)
+
+        if self.base_alg == '{0}tit_for_{1}tat':
+            for i in range(1, self.alg_constants[0] + 1):
+
+                # if len(b1_move_history) >= self.alg_constants[1] + i:
+                #     print('here')
+                #     print(i)
+                #     print(b1_move_history[-self.alg_constants[1] - i:-i])
+                #     print(len(b1_move_history[-self.alg_constants[1] - i:-i]))
+                #     print(sum(b1_move_history[-self.alg_constants[1] - i:-i]) )
+
+                if len(b1_move_history) >= self.alg_constants[1] + i and \
+                        sum(b1_move_history[-self.alg_constants[1] - i:-i]) == len(b1_move_history[-self.alg_constants[1] - i:-i]):
+                    return 1
+            return 0
+
+
         if self.base_alg == 'tit_for_tat':
             if b2_move_history and b2_move_history[-1] == 1:
                 return 1
             else:
                 return 0
-        if self.base_alg == 'defect':
-            return 1
-        if self.base_alg == 'cooperate':
-            return 0
         if self.base_alg == 'tit_for_2tat':
             if len(b1_move_history) >= 2 and b2_move_history[-1] == 1 and b2_move_history[-2] == 1:
                 return 1
             else:
                 return 0
+
+        if self.base_alg == 'defect':
+            return 1
+        if self.base_alg == 'cooperate':
+            return 0
+
 
         if self.base_alg == 'preset':
             return g_preset[self.move_count]
@@ -566,9 +594,10 @@ def get_random_new_bot(b_count, generation, history_len=50):
         trainable = True
     else:
         trainable = False
-
+    alg_constants = (random.randint(1, 3), random.randint(1, 3))
     return DBot(b_count, history_len=history_len, model_depth=model_depth, base_alg=base_alg, trainable=trainable,
-         use_reputation=use_reputation, generation=generation, base_alg_random_prob=base_alg_random_prob)
+         use_reputation=use_reputation, generation=generation, base_alg_random_prob=base_alg_random_prob,
+                alg_constants=alg_constants)
 
 
 max_count = max_num_of_bots
@@ -669,6 +698,9 @@ for gen_id in range(generations):
                 print('selecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
             for i in [b for b in ratings][int(len(ratings)*survival_rate):]:
                 print('rejecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
+
+            del bots
+            gc.collect()
 
             bots = [b['bot'] for b in ratings][:int(len(ratings)*survival_rate)]
 
