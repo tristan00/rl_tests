@@ -23,7 +23,7 @@ base_retraining_frequency = .1
 generations = 1000
 decay_period = 100
 survival_rate = .9
-generation_training_size = 10000
+generation_training_size = 5000
 max_training_size = 100000
 max_num_of_bots = 128
 lgbm_params =  {
@@ -44,11 +44,15 @@ min_epsilon = .25
 maximum_elo = 10000
 minimum_elo = 10
 starting_elo = 1000
-prob_of_trainable = .95
-rating_prob = .1
+prob_of_trainable = .25
+rating_prob = .25
+max_tit = 3
+max_tat = 3
 
 # base_algorithms =  ['tit_for_tat', 'random', 'defect', 'no_forgiveness', 'tit_for_2tat', 'cooperate']
-base_algorithms =  ['{0}tit_for_{1}tat', 'random', 'defect', 'cooperate']
+base_algorithms =  ['{0}tit_for_{1}tat', 'random', 'defect', 'cooperate', 'no_forgiveness']
+eff_base_algs = ['{0}tit_for_{1}tat'.format(i, j) for i in range(1, max_tit + 1)
+                 for j in range(1, max_tat + 1) ] + ['random', 'defect', 'cooperate', 'no_forgiveness']
 max_data_size = 100000
 
 g_preset = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0,
@@ -90,7 +94,7 @@ def calculate_new_elo(outcome, player_1_elo, player_2_elo):
 
 class DBot():
     def __init__(self, n, history_len = 5, model_depth = 1, base_alg = 'random', trainable = False, generation = 0,
-                 base_training_rate = .1, decay_period = 10, use_reputation = 0, base_alg_random_prob = 0, alg_constants = (1, 1)):
+                 base_training_rate = .1, decay_period = 100, use_reputation = 0, base_alg_random_prob = 0, alg_constants = (1, 1)):
         self.b_id = n
         self.base_alg = base_alg
         self.history_len = history_len
@@ -206,7 +210,7 @@ class DBot():
 
 
     def give_feedback(self,  move_history1, move_history2, move, score, opponent_reputation):
-        if len(self.x) < max_data_size:
+        if len(self.x) < max_data_size and self.trainable:
             small_move1_history = move_history1[-self.history_len:]
             small_move2_history = move_history2[-self.history_len:]
 
@@ -264,25 +268,35 @@ class DBot():
             # else:
             #     return random.randint(0, 1)
 
-        if random.random() < self.base_alg_random_prob:
+        if random.random() < self.base_alg_random_prob and self.trainable:
             return random.randint(0, 1)
         if self.base_alg == 'random':
             return random.randint(0, 1)
 
         if self.base_alg == '{0}tit_for_{1}tat':
-            for i in range(1, self.alg_constants[0] + 1):
 
-                # if len(b1_move_history) >= self.alg_constants[1] + i:
-                #     print('here')
-                #     print(i)
-                #     print(b1_move_history[-self.alg_constants[1] - i:-i])
-                #     print(len(b1_move_history[-self.alg_constants[1] - i:-i]))
-                #     print(sum(b1_move_history[-self.alg_constants[1] - i:-i]) )
-
-                if len(b1_move_history) >= self.alg_constants[1] + i and \
-                        sum(b1_move_history[-self.alg_constants[1] - i:-i]) == len(b1_move_history[-self.alg_constants[1] - i:-i]):
+            for i in range(self.alg_constants[0]):
+                b_sub = b2_move_history[-self.alg_constants[1]-i:-i]
+                if len(b_sub) == sum(b_sub):
                     return 1
             return 0
+
+            #
+            # if len(b1_move_history) > 3:
+            #     print('here')
+            # for i in range(0, self.alg_constants[0]):
+            #
+            #     if len(b1_move_history) >= self.alg_constants[1] + i:
+            #         print('here')
+            #         print(i)
+            #         print(b1_move_history[-self.alg_constants[1] - i:-i])
+            #         print(len(b1_move_history[-self.alg_constants[1] - i:-i]))
+            #         print(sum(b1_move_history[-self.alg_constants[1] - i:-i]) )
+            #
+            #     if len(b1_move_history) >= self.alg_constants[1] + i and \
+            #             sum(b1_move_history[-self.alg_constants[1] - i:-i]) == len(b1_move_history[-self.alg_constants[1] - i:-i]):
+            #         return 1
+            # return 0
 
 
         if self.base_alg == 'tit_for_tat':
@@ -540,7 +554,7 @@ def rate_bots_comparative(bots, gen_id):
         df.loc[i.get_id(), 'using_reputation'] = i.use_reputation
         df.loc[i.get_id(), 'base_alg_random_prob'] = i.base_alg_random_prob
 
-        for j in base_algorithms:
+        for j in eff_base_algs:
             if i.base_alg == j:
                 df.loc[i.get_id(), j] = 1
             else:
@@ -588,7 +602,7 @@ def get_random_new_bot(b_count, generation, history_len=50):
     use_reputation = random.randint(0, 1)
     model_depth = random.randint(3, 14)
 
-    base_alg_random_prob = random.random() *0.1
+    base_alg_random_prob = random.random() *0.01
 
     if random.random() < prob_of_trainable:
         trainable = True
