@@ -23,7 +23,7 @@ base_retraining_frequency = .1
 generations = 1000
 decay_period = 100
 survival_rate = .9
-generation_training_size = 5000
+generation_training_size = 8000
 max_training_size = 100000
 max_num_of_bots = 128
 lgbm_params =  {
@@ -48,6 +48,7 @@ prob_of_trainable = .25
 rating_prob = .25
 max_tit = 3
 max_tat = 3
+base_alg_random_prob = 0.05
 
 # base_algorithms =  ['tit_for_tat', 'random', 'defect', 'no_forgiveness', 'tit_for_2tat', 'cooperate']
 base_algorithms =  ['{0}tit_for_{1}tat', 'random', 'defect', 'cooperate', 'no_forgiveness']
@@ -274,11 +275,34 @@ class DBot():
             return random.randint(0, 1)
 
         if self.base_alg == '{0}tit_for_{1}tat':
+            # print('start')
+            # print(self.alg_constants)
+            # print(b1_move_history[-5:])
+            # print(b2_move_history[-5:])
+            # print(len( b2_move_history[-self.alg_constants[1]-0:-0]))
+            #
+            # if sum(b2_move_history[-3:]) == 3 and self.alg_constants[1] == 3:
+            #     print('here')
 
             for i in range(self.alg_constants[0]):
-                b_sub = b2_move_history[-self.alg_constants[1]-i:-i]
-                if len(b_sub) == sum(b_sub):
+                if i == 0:
+                    b_sub = b2_move_history[-self.alg_constants[1]:]
+                else:
+                    b_sub = b2_move_history[-self.alg_constants[1]-i:-i]
+                # print(b2_move_history[-self.alg_constants[1]-i:-i])
+                # print(i)
+                # print(self.alg_constants[1])
+                # print(len(b_sub))
+                # print(sum(b_sub))
+                # print(len( b2_move_history[:-i]))
+                # print(len( b2_move_history[:-i][-self.alg_constants[1]-i:]))
+                # print(len( b2_move_history[:-i][-self.alg_constants[1]-i:]) >= self.alg_constants[1])
+                # print(len(b_sub) == sum(b_sub))
+
+                if len( b_sub) >= self.alg_constants[1] and len(b_sub) == sum(b_sub):
+                    # print('pred 1')
                     return 1
+            # print('pred 0')
             return 0
 
             #
@@ -540,14 +564,13 @@ def rate_bots_comparative(bots, gen_id):
         else:
             df.loc[i.get_id(), 'trainable'] = 0
 
-
     df['model_depth'] = 0
     df['using_reputation'] = 0
     df['base_alg_random_prob'] = 0
 
-    for i in base_algorithms:
-        df[i] = 0
-
+    for i in eff_base_algs:
+        for j in ['trainable', 'not_trainable']:
+            df[i+ '_' + j] = 0
 
     for i in bots:
         df.loc[i.get_id(), 'model_depth'] = i.model_depth
@@ -555,11 +578,12 @@ def rate_bots_comparative(bots, gen_id):
         df.loc[i.get_id(), 'base_alg_random_prob'] = i.base_alg_random_prob
 
         for j in eff_base_algs:
-            if i.base_alg == j:
-                df.loc[i.get_id(), j] = 1
-            else:
-                df.loc[i.get_id(), j] = 0
-
+            if i.alt_base_alg == j and i.trainable:
+                df.loc[i.get_id(), j+ '_' + 'trainable'] = 1
+                df.loc[i.get_id(), j+ '_' + 'not_trainable'] = 0
+            elif i.alt_base_alg == j:
+                df.loc[i.get_id(), j+ '_' + 'trainable'] = 0
+                df.loc[i.get_id(), j+ '_' + 'not_trainable'] = 1
 
     df['uncalled_aggression'] = 0
     df['retaliation'] = 0
@@ -582,14 +606,6 @@ def rate_bots_comparative(bots, gen_id):
         df.loc[i.get_id(), 'first_move'] = char_res[3]
 
     df = df.fillna(df.mean())
-
-
-
-
-
-    # df = pd.DataFrame(data = res_array,
-    #                   index = [i.get_id() for i in bots],
-    #                   columns=[i.get_id() for i in bots])
     return df, ratings
 
 
@@ -602,7 +618,6 @@ def get_random_new_bot(b_count, generation, history_len=50):
     use_reputation = random.randint(0, 1)
     model_depth = random.randint(3, 14)
 
-    base_alg_random_prob = random.random() *0.01
 
     if random.random() < prob_of_trainable:
         trainable = True
@@ -669,16 +684,12 @@ for gen_id in range(generations):
             score_list.append(g.score[1])
 
         if len(score_list) > 0:
-            print('trailing results', gen_id, sum(score_list[-1000:])/len(score_list[-1000:]), len(score_list[-1000:]))
+            print('trailing results', gen_id, sum(score_list)/len(score_list))
+            score_list = score_list[-10000:]
 
         if i%generation_training_size == 0 and i > 0:
             df = pd.DataFrame.from_dict(scores)
             df.to_csv(sum_path + 'res_{0}.csv'.format(g_count), index = False)
-
-            # for b in bots:
-            #     b.train_model(always=True)
-
-
 
             comp_df, ratings = rate_bots_comparative(bots, gen_id)
             full_results.append(comp_df)
@@ -693,8 +704,9 @@ for gen_id in range(generations):
              'using_reputation': comp_df['using_reputation'].mean(),
              'trainable': comp_df['trainable'].mean()}
 
-            for b_a in base_algorithms:
-                new_gen_data.update({ b_a: comp_df[b_a].mean()})
+            for b_a in eff_base_algs:
+                for t in ['trainable', 'not_trainable']:
+                    new_gen_data.update({'strat_' + b_a + '_' + t: comp_df[b_a + '_' + t].mean()})
             gen_data.append(new_gen_data)
 
             gen_df = pd.DataFrame.from_dict(gen_data)
