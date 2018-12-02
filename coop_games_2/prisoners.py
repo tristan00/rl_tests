@@ -23,9 +23,9 @@ base_retraining_frequency = .1
 generations = 1000
 decay_period = 100
 survival_rate = .9
-generation_training_size = 8000
-max_training_size = 100000
-max_num_of_bots = 128
+generation_training_size = 12000
+max_training_size = 200000
+max_num_of_bots = 256
 lgbm_params =  {
     'boosting_type': 'gbdt',
     'objective': 'regression',
@@ -45,15 +45,17 @@ maximum_elo = 10000
 minimum_elo = 10
 starting_elo = 1000
 prob_of_trainable = .25
-rating_prob = .25
+rating_prob = .1
 max_tit = 3
 max_tat = 3
 base_alg_random_prob = 0.05
-
+random_defect_chance = .1
 # base_algorithms =  ['tit_for_tat', 'random', 'defect', 'no_forgiveness', 'tit_for_2tat', 'cooperate']
-base_algorithms =  ['{0}tit_for_{1}tat', 'random', 'defect', 'cooperate', 'no_forgiveness']
+base_algorithms =  ['{0}tit_for_{1}tat', 'random', 'defect', 'cooperate', 'no_forgiveness', 'tit_for_tat_first_defect',
+                    'tit_for_tat_random_defect', 'tit_for_tat_random_defect', 'tester']
 eff_base_algs = ['{0}tit_for_{1}tat'.format(i, j) for i in range(1, max_tit + 1)
-                 for j in range(1, max_tat + 1) ] + ['random', 'defect', 'cooperate', 'no_forgiveness']
+                 for j in range(1, max_tat + 1) ] + ['random', 'defect', 'cooperate', 'no_forgiveness',
+                                                     'tit_for_tat_first_defect', 'tit_for_tat_random_defect', 'tester']
 max_data_size = 100000
 
 g_preset = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0,
@@ -351,8 +353,23 @@ class DBot():
             else:
                 return 0
 
+        if self.base_alg == 'tit_for_tat_first_defect':
+            if (b2_move_history and b2_move_history[-1] == 1) or not b2_move_history:
+                return 1
+            else:
+                return 0
+
+        if self.base_alg == 'tit_for_tat_random_defect':
+            if (b2_move_history and b2_move_history[-1] == 1) or random.random() < random_defect_chance:
+                return 1
+            else:
+                return 0
+
         if self.base_alg == 'tester':
-            pass
+            if (b2_move_history and b2_move_history[-1] == 1 and b1_move_history[-1] == 0) or not b2_move_history:
+                return 1
+            else:
+                return 0
 
         if self.base_alg == 'tranquilizer':
             pass
@@ -679,13 +696,13 @@ for gen_id in range(generations):
                        # 's_{0}_model_depth'.format(b2.b_id): b1.history_len,
                        's_{0}_score'.format(b2.b_id):g.score[1]})
 
-        if b1.b_id > 4 and b2.b_id > 4:
-            score_list.append(g.score[0])
-            score_list.append(g.score[1])
+        # if b1.b_id > 4 and b2.b_id > 4:
+        score_list.append(g.score[0])
+        score_list.append(g.score[1])
 
         if len(score_list) > 0:
             print('trailing results', gen_id, sum(score_list)/len(score_list))
-            score_list = score_list[-10000:]
+            score_list = score_list[-generation_training_size * 2:]
 
         if i%generation_training_size == 0 and i > 0:
             df = pd.DataFrame.from_dict(scores)
