@@ -22,10 +22,10 @@ forward_view = 10
 base_retraining_frequency = .1
 generations = 1000
 decay_period = 1000
-survival_rate = .5
-generation_training_size = 12000
-max_training_size = 25000
-max_num_of_bots = 128
+survival_rate = .8
+generation_training_size = 20000
+max_training_size = 50000
+max_num_of_bots = 100
 path = r'C:\Users\trist\Documents\prisoner_models\saved_games/'
 sum_path =r'C:\Users\trist\Documents\prisoner_models\saved_data/'
 epsilon = .001
@@ -36,7 +36,7 @@ maximum_elo = 10000
 minimum_elo = 10
 starting_elo = 1000
 prob_of_trainable = .5
-rating_prob = .2
+rating_prob = .6
 max_tit = 3
 max_tat = 3
 base_alg_random_prob = 0.01
@@ -686,9 +686,6 @@ for gen_id in range(generations):
             score_list = score_list[-generation_training_size * 2:]
 
         if i%generation_training_size == 0 and i > 0:
-            # df = pd.DataFrame.from_dict(scores)
-            # df.to_csv(sum_path + 'res_{0}.csv'.format(g_count), index = False)
-
             comp_df, ratings = rate_bots_comparative(bots, gen_id)
             ratings.sort(key = lambda x: x['average'], reverse = True)
 
@@ -702,7 +699,7 @@ for gen_id in range(generations):
             gc.collect()
             bots = [b['bot'] for b in ratings][:int(len(ratings) * survival_rate)]
 
-            comp_df, ratings = rate_bots_comparative(bots, gen_id)
+            # comp_df, ratings = rate_bots_comparative(bots, gen_id)
 
             full_results.append(comp_df)
             new_gen_data = {'gen_id': gen_id,
@@ -729,12 +726,6 @@ for gen_id in range(generations):
 
             print(gen_id)
             comp_df.to_csv(sum_path + 'comp_res_{0}.csv'.format(gen_id))
-
-
-
-
-            # for b in bots:
-            #     b.trainable = False
 
             while len(bots) < max_num_of_bots:
                 max_count += 1
