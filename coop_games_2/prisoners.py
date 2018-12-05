@@ -21,35 +21,29 @@ max_iter =  100
 forward_view = 10
 base_retraining_frequency = .1
 generations = 1000
-decay_period = 100
-survival_rate = .9
+decay_period = 1000
+survival_rate = .5
 generation_training_size = 12000
-max_training_size = 200000
-max_num_of_bots = 256
-lgbm_params =  {
-    'boosting_type': 'gbdt',
-    'objective': 'regression',
-    'metric': 'l1',
-    "learning_rate": 0.01,
-    "max_depth": -1,
-    'num_leaves':127
-    }
-
+max_training_size = 25000
+max_num_of_bots = 128
 path = r'C:\Users\trist\Documents\prisoner_models\saved_games/'
 sum_path =r'C:\Users\trist\Documents\prisoner_models\saved_data/'
 epsilon = .001
 epsilon_decay = .1
-epsilon_decay_period = 10
+epsilon_decay_period = 100
 min_epsilon = .25
 maximum_elo = 10000
 minimum_elo = 10
 starting_elo = 1000
-prob_of_trainable = .25
-rating_prob = .1
+prob_of_trainable = .5
+rating_prob = .2
 max_tit = 3
 max_tat = 3
-base_alg_random_prob = 0.05
-random_defect_chance = .1
+base_alg_random_prob = 0.01
+random_defect_chance = .05
+max_model_depth = 10
+min_model_depth = 5
+
 # base_algorithms =  ['tit_for_tat', 'random', 'defect', 'no_forgiveness', 'tit_for_2tat', 'cooperate']
 base_algorithms =  ['{0}tit_for_{1}tat', 'random', 'defect', 'cooperate', 'no_forgiveness', 'tit_for_tat_first_defect',
                     'tit_for_tat_random_defect', 'tit_for_tat_random_defect', 'tester']
@@ -141,6 +135,7 @@ class DBot():
 
         self.model = None
         self.use_model = False
+        self.trained_max = False
 
         #Characteristics:
         self.first_move = -1
@@ -179,7 +174,7 @@ class DBot():
         # print('training_prob', training_prob)
 
 
-        if len(self.x) > 0 and self.trainable and (random.random() < training_prob or always):
+        if len(self.x) > 0 and self.trainable and (random.random() < training_prob or always)  and not self.trained_max:
             print('training model')
             x = np.array(self.x)
             y = np.array(self.y)
@@ -210,10 +205,12 @@ class DBot():
             self.use_model = True
             self.save_model()
 
+        if len(self.x) <= max_data_size:
+            self.trained_max = True
 
 
     def give_feedback(self,  move_history1, move_history2, move, score, opponent_reputation):
-        if len(self.x) < max_data_size and self.trainable:
+        if len(self.x) < max_data_size and self.trained_max:
             small_move1_history = move_history1[-self.history_len:]
             small_move2_history = move_history2[-self.history_len:]
 
@@ -229,6 +226,7 @@ class DBot():
 
             self.x.append(new_x)
             self.y.append(score)
+
 
 
     def predict_move(self, b1_move_history, b2_move_history, rep, opponent_id = 0, move_num = 0, l_epsilon = 1.0):
@@ -366,7 +364,8 @@ class DBot():
                 return 0
 
         if self.base_alg == 'tester':
-            if (b2_move_history and b2_move_history[-1] == 1 and b1_move_history[-1] == 0) or not b2_move_history:
+            if (b2_move_history and b2_move_history[-1] == 1 and b1_move_history[-1] == 0) or \
+                    (b2_move_history and b2_move_history[-1] == 0  and b1_move_history[-1] == 1) or not b2_move_history:
                 return 1
             else:
                 return 0
@@ -633,8 +632,7 @@ def rate_bots_comparative(bots, gen_id):
 def get_random_new_bot(b_count, generation, history_len=50):
     base_alg = random.choice(base_algorithms)
     use_reputation = random.randint(0, 1)
-    model_depth = random.randint(3, 14)
-
+    model_depth = random.randint(min_model_depth, max_model_depth)
 
     if random.random() < prob_of_trainable:
         trainable = True
@@ -645,24 +643,8 @@ def get_random_new_bot(b_count, generation, history_len=50):
          use_reputation=use_reputation, generation=generation, base_alg_random_prob=base_alg_random_prob,
                 alg_constants=alg_constants)
 
-
 max_count = max_num_of_bots
-
-
 bots = []
-# bots.append(DBot(0, history_len=50, model_depth=1, base_alg = 'tit_for_tat', trainable = False))
-# bots.append(DBot(1, history_len=50, model_depth=1, base_alg = 'random', trainable = False))
-# bots.append(DBot(2, history_len=50, model_depth=1, base_alg='defect', trainable=False))
-# bots.append(DBot(3, history_len=50, model_depth=1, base_alg='no_forgiveness', trainable=False))
-# bots.append(DBot(4, history_len=50, model_depth=1, base_alg='tit_for_2tat', trainable=False))
-# bots.append(DBot(5, history_len=50, model_depth=1, base_alg = 'tit_for_tat', trainable = False))
-
-#
-# g_count = 5
-#
-# for i in range(g_count, max_count):
-#     bots.append(DBot(i, history_len=50, model_depth=random.randint(3, 14), base_alg='random', trainable=True, use_reputation=random.randint(0, 1)))
-# g_count = max_count
 
 for i in range(max_count):
     bots.append(get_random_new_bot(i, 0, history_len=50))
@@ -672,8 +654,7 @@ for b in bots:
     print(b.get_id())
 
 print(len(bots))
-# max_count = g_count + 5
-scores = []
+# scores = []
 score_list = []
 
 gen_data = []
@@ -690,11 +671,11 @@ for gen_id in range(generations):
         print(i, epsilon, b1.b_id, b2.b_id)
 
         g = Game(b1, b2)
-        scores.append({'s_{0}_score'.format(b1.b_id):g.score[0],
-                       # 's_{0}_history_len'.format(b1.b_id):b1.history_len,
-                       # 's_{0}_history_len'.format(b2.b_id):b1.history_len, 's_{0}_model_depth'.format(b1.b_id): b1.history_len,
-                       # 's_{0}_model_depth'.format(b2.b_id): b1.history_len,
-                       's_{0}_score'.format(b2.b_id):g.score[1]})
+        # scores.append({'s_{0}_score'.format(b1.b_id):g.score[0],
+        #                # 's_{0}_history_len'.format(b1.b_id):b1.history_len,
+        #                # 's_{0}_history_len'.format(b2.b_id):b1.history_len, 's_{0}_model_depth'.format(b1.b_id): b1.history_len,
+        #                # 's_{0}_model_depth'.format(b2.b_id): b1.history_len,
+        #                's_{0}_score'.format(b2.b_id):g.score[1]})
 
         # if b1.b_id > 4 and b2.b_id > 4:
         score_list.append(g.score[0])
@@ -705,10 +686,24 @@ for gen_id in range(generations):
             score_list = score_list[-generation_training_size * 2:]
 
         if i%generation_training_size == 0 and i > 0:
-            df = pd.DataFrame.from_dict(scores)
-            df.to_csv(sum_path + 'res_{0}.csv'.format(g_count), index = False)
+            # df = pd.DataFrame.from_dict(scores)
+            # df.to_csv(sum_path + 'res_{0}.csv'.format(g_count), index = False)
 
             comp_df, ratings = rate_bots_comparative(bots, gen_id)
+            ratings.sort(key = lambda x: x['average'], reverse = True)
+
+            print('generation : {0}'.format(gen_id))
+            for i in [b for b in ratings][:int(len(ratings)*survival_rate)]:
+                print('selecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
+            for i in [b for b in ratings][int(len(ratings)*survival_rate):]:
+                print('rejecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
+
+            del bots
+            gc.collect()
+            bots = [b['bot'] for b in ratings][:int(len(ratings) * survival_rate)]
+
+            comp_df, ratings = rate_bots_comparative(bots, gen_id)
+
             full_results.append(comp_df)
             new_gen_data = {'gen_id': gen_id,
              'average': comp_df['average'].mean(),
@@ -734,18 +729,9 @@ for gen_id in range(generations):
 
             print(gen_id)
             comp_df.to_csv(sum_path + 'comp_res_{0}.csv'.format(gen_id))
-            ratings.sort(key = lambda x: x['average'], reverse = True)
 
-            print('generation : {0}'.format(gen_id))
-            for i in [b for b in ratings][:int(len(ratings)*survival_rate)]:
-                print('selecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
-            for i in [b for b in ratings][int(len(ratings)*survival_rate):]:
-                print('rejecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
 
-            del bots
-            gc.collect()
 
-            bots = [b['bot'] for b in ratings][:int(len(ratings)*survival_rate)]
 
             # for b in bots:
             #     b.trainable = False
