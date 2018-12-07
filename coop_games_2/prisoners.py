@@ -22,9 +22,9 @@ forward_view = 10
 base_retraining_frequency = .1
 generations = 1000
 decay_period = 1000
-survival_rate = .8
+survival_rate = .75
 generation_training_size = 20000
-max_training_size = 50000
+max_training_size = 25000
 max_num_of_bots = 100
 path = r'C:\Users\trist\Documents\prisoner_models\saved_games/'
 sum_path =r'C:\Users\trist\Documents\prisoner_models\saved_data/'
@@ -40,7 +40,7 @@ rating_prob = .6
 max_tit = 3
 max_tat = 3
 base_alg_random_prob = 0.01
-random_defect_chance = .05
+random_defect_chance = .125
 max_model_depth = 10
 min_model_depth = 5
 
@@ -170,12 +170,13 @@ class DBot():
     def train_model(self, always = False):
 
         training_prob = self.base_training_rate * (.5 ** (self.g_count / self.decay_period))
-
+        # print(len(self.x), training_prob, self.trained_max)
         # print('training_prob', training_prob)
 
 
-        if len(self.x) > 0 and self.trainable and (random.random() < training_prob or always)  and not self.trained_max:
-            print('training model')
+        if (len(self.x) > 0 and self.trainable and (random.random() < training_prob or always) and not self.trained_max)\
+                or (not self.trained_max and len(self.x) >= max_data_size):
+            # print('training model')
             x = np.array(self.x)
             y = np.array(self.y)
 
@@ -205,12 +206,13 @@ class DBot():
             self.use_model = True
             self.save_model()
 
-        if len(self.x) <= max_data_size:
+        if len(self.x) >= max_data_size:
             self.trained_max = True
+            print(self.get_id(), 'trained_max', len(self.x))
 
 
     def give_feedback(self,  move_history1, move_history2, move, score, opponent_reputation):
-        if len(self.x) < max_data_size and self.trained_max:
+        if len(self.x) < max_data_size and not self.trained_max:
             small_move1_history = move_history1[-self.history_len:]
             small_move2_history = move_history2[-self.history_len:]
 
@@ -496,7 +498,7 @@ class Game():
             b1.elo = b1_new_elo
             b2.elo = b2_new_elo
 
-        print('total games', game_count, 'scores:', b1_score_final, b2_score_final, 'bots:',b1.get_id(),b2.get_id(),'elos:', b1.elo, b2.elo)
+        # print('total games', game_count, 'scores:', b1_score_final, b2_score_final, 'bots:',b1.get_id(),b2.get_id(),'elos:', b1.elo, b2.elo)
 
         # if learning and sum(score1_history)/len(score1_history) > sum(score2_history)/len(score2_history):
         #     b1.elo = calculate_new_elo(1, b1.elo, b2.elo)
@@ -569,8 +571,10 @@ def rate_bots_comparative(bots, gen_id):
 
     df['elo'] = 0
     df['trainable'] = 0
+    df['name'] = 0
 
     for i in bots:
+        df.loc[i.get_id(), 'name'] = i.get_id()
         df.loc[i.get_id(), 'elo'] = i.elo
         df.loc[i.get_id(), 'generation'] = i.generation
         df.loc[i.get_id(), 'depth'] = i.model_depth
@@ -631,7 +635,8 @@ def rate_bots_comparative(bots, gen_id):
 
 def get_random_new_bot(b_count, generation, history_len=50):
     base_alg = random.choice(base_algorithms)
-    use_reputation = random.randint(0, 1)
+    # use_reputation = random.randint(0, 1)
+    use_reputation = 0
     model_depth = random.randint(min_model_depth, max_model_depth)
 
     if random.random() < prob_of_trainable:
@@ -685,7 +690,18 @@ for gen_id in range(generations):
             print('trailing results', gen_id, sum(score_list)/len(score_list))
             score_list = score_list[-generation_training_size * 2:]
 
-        if i%generation_training_size == 0 and i > 0:
+        if (i%generation_training_size == 0 and i > 0):
+            for b in bots:
+                if not b.trained_max:
+                    b.train_model(always = True)
+                    b.trained_max = True
+
+        num_of_finished_bots = len([b for b in bots if b.trained_max])
+
+        if num_of_finished_bots == max_num_of_bots:
+            for b in bots:
+                b.trained_max = True
+
             comp_df, ratings = rate_bots_comparative(bots, gen_id)
             ratings.sort(key = lambda x: x['average'], reverse = True)
 
