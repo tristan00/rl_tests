@@ -19,11 +19,11 @@ elo_k = elo_d/10
 chance_to_stop = .01
 max_iter =  100
 forward_view = 10
-base_retraining_frequency = .1
+base_retraining_frequency = .2
 generations = 1000
 decay_period = 1000
 generation_training_size = 20000
-max_training_size = 25000
+max_training_size = 50000
 max_num_of_bots = 100
 path = r'C:\Users\trist\Documents\prisoner_models\saved_games/'
 sum_path =r'C:\Users\trist\Documents\prisoner_models\saved_data/'
@@ -35,7 +35,7 @@ maximum_elo = 10000
 minimum_elo = 10
 starting_elo = 1000
 prob_of_trainable = 1.0
-rating_prob = .25
+rating_prob = .5
 max_tit = 3
 max_tat = 3
 base_alg_random_prob = 0.01
@@ -43,9 +43,7 @@ random_defect_chance = .125
 max_model_depth = 10
 min_model_depth = 5
 
-garanteed_survival_rate = .5 #top n% get moved to next gen
-non_garanteed_survival_chance = .5 #outside of top, random chance of moving on
-survival_rate = .9
+survival_chance_limit = .8 #Scales survival rate of generaltion so scaling survival percentage only starts for the bottom n%
 
 # base_algorithms =  ['tit_for_tat', 'random', 'defect', 'no_forgiveness', 'tit_for_2tat', 'cooperate']
 base_algorithms =  ['{0}tit_for_{1}tat', 'random', 'defect', 'cooperate', 'no_forgiveness', 'tit_for_tat_first_defect',
@@ -93,8 +91,7 @@ def calculate_new_elo(outcome, player_1_elo, player_2_elo):
 
 
 class DBot():
-    def __init__(self, n, history_len = 5, model_depth = 1, base_alg = 'random', trainable = False, generation = 0,
-                 base_training_rate = .1, decay_period = 100, use_reputation = 0, base_alg_random_prob = 0, alg_constants = (1, 1)):
+    def __init__(self, n, history_len = 5, model_depth = 1, base_alg = 'random', trainable = False, generation = 0, decay_period = 100, use_reputation = 0, base_alg_random_prob = 0, alg_constants = (1, 1)):
         self.b_id = n
         self.base_alg = base_alg
         self.history_len = history_len
@@ -109,7 +106,7 @@ class DBot():
         self.move_count = 0
         self.generation = generation
         self.g_count = 0
-        self.base_training_rate = base_training_rate
+        self.base_training_rate = base_retraining_frequency
         self.decay_period = decay_period
         self.epsilon = 1.0
         self.base_alg_random_prob = base_alg_random_prob
@@ -710,18 +707,27 @@ for gen_id in range(generations):
             ratings.sort(key = lambda x: x['average'], reverse = True)
 
             survivors = []
-
             print('generation : {0}'.format(gen_id))
-            for i in [b for b in ratings][:int(len(ratings)*garanteed_survival_rate)]:
-                print('selecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
-                survivors.append(i['bot'])
 
-            for i in [b for b in ratings][int(len(ratings)*garanteed_survival_rate):]:
-                if random.random() < non_garanteed_survival_chance:
+            for count, i in enumerate([b for b in ratings]):
+                if (len(ratings) - count)/len(ratings) > (random.random()*survival_chance_limit):
                     print('selecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
-                    survivors.append(i['bot'])
                 else:
                     print('rejecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
+
+            # for i in [b for b in ratings][:int(len(ratings)*top_survival_chunk_size)]:
+            #     if random.random() < top_survival_chunk_rate:
+            #         print('selecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
+            #         survivors.append(i['bot'])
+            #     else:
+            #         print('rejecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
+            #
+            # for i in [b for b in ratings][int(len(ratings)*top_survival_chunk_size):]:
+            #     if random.random() < bot_survival_chunk_rate:
+            #         print('selecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
+            #         survivors.append(i['bot'])
+            #     else:
+            #         print('rejecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
 
             del bots
             gc.collect()
