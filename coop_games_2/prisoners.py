@@ -22,7 +22,6 @@ forward_view = 10
 base_retraining_frequency = .1
 generations = 1000
 decay_period = 1000
-survival_rate = .75
 generation_training_size = 20000
 max_training_size = 25000
 max_num_of_bots = 100
@@ -36,13 +35,17 @@ maximum_elo = 10000
 minimum_elo = 10
 starting_elo = 1000
 prob_of_trainable = 1.0
-rating_prob = .6
+rating_prob = .25
 max_tit = 3
 max_tat = 3
 base_alg_random_prob = 0.01
 random_defect_chance = .125
 max_model_depth = 10
 min_model_depth = 5
+
+garanteed_survival_rate = .5 #top n% get moved to next gen
+non_garanteed_survival_chance = .5 #outside of top, random chance of moving on
+survival_rate = .9
 
 # base_algorithms =  ['tit_for_tat', 'random', 'defect', 'no_forgiveness', 'tit_for_2tat', 'cooperate']
 base_algorithms =  ['{0}tit_for_{1}tat', 'random', 'defect', 'cooperate', 'no_forgiveness', 'tit_for_tat_first_defect',
@@ -167,7 +170,7 @@ class DBot():
 
 
 
-    def train_model(self, always = False):
+    def train_model(self, always = False, final = False):
 
         training_prob = self.base_training_rate * (.5 ** (self.g_count / self.decay_period))
         # print(len(self.x), training_prob, self.trained_max)
@@ -206,9 +209,9 @@ class DBot():
             self.use_model = True
             self.save_model()
 
-        if len(self.x) >= max_data_size:
-            self.trained_max = True
-            print(self.get_id(), 'trained_max', len(self.x))
+            if not self.trained_max and (len(self.x) >= max_data_size or final):
+                print(self.get_id(), 'model training done', len(self.x))
+                self.trained_max = True
 
 
     def give_feedback(self,  move_history1, move_history2, move, score, opponent_reputation):
@@ -559,6 +562,7 @@ def rate_bots_comparative(bots, gen_id):
                 print(b1.b_id, b2.b_id)
                 g1 = Game(b1, b2, learning=False)
                 df.loc[b1.get_id(), b2.get_id()] = g1.score[0]
+                df.loc[b2.get_id(), b1.get_id()] = g1.score[1]
                 # res_array[b2.b_id, b1.b_id] = g1.score[1]
                 average += g1.score[0]
         average = average / comp_num
@@ -693,7 +697,7 @@ for gen_id in range(generations):
         if (i%generation_training_size == 0 and i > 0):
             for b in bots:
                 if not b.trained_max:
-                    b.train_model(always = True)
+                    b.train_model(always = True, final=True)
                     b.trained_max = True
 
         num_of_finished_bots = len([b for b in bots if b.trained_max])
@@ -705,15 +709,23 @@ for gen_id in range(generations):
             comp_df, ratings = rate_bots_comparative(bots, gen_id)
             ratings.sort(key = lambda x: x['average'], reverse = True)
 
+            survivors = []
+
             print('generation : {0}'.format(gen_id))
-            for i in [b for b in ratings][:int(len(ratings)*survival_rate)]:
+            for i in [b for b in ratings][:int(len(ratings)*garanteed_survival_rate)]:
                 print('selecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
-            for i in [b for b in ratings][int(len(ratings)*survival_rate):]:
-                print('rejecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
+                survivors.append(i['bot'])
+
+            for i in [b for b in ratings][int(len(ratings)*garanteed_survival_rate):]:
+                if random.random() < non_garanteed_survival_chance:
+                    print('selecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
+                    survivors.append(i['bot'])
+                else:
+                    print('rejecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
 
             del bots
             gc.collect()
-            bots = [b['bot'] for b in ratings][:int(len(ratings) * survival_rate)]
+            bots = survivors
 
             # comp_df, ratings = rate_bots_comparative(bots, gen_id)
 

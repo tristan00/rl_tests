@@ -16,6 +16,7 @@ scaler = MinMaxScaler()
 all_data_df_features = scaler.fit_transform(all_data_df_features)
 
 try:
+    raise Exception()
     with open(sum_path + 'kmeans.plk', 'rb') as f:
         kmeans = KMeans(n_clusters=12)
         clusters = kmeans.predict(all_data_df_features)
@@ -49,10 +50,10 @@ all_data_df['generation_rank'] = generation_characteristics
 
 generation_characteristics_median_df = all_data_df[all_data_df['generation_rank'] <= 80]
 # generation_characteristics_median_df = generation_characteristics_median_df.groupby(['gen_id'])[group_features].median()
-# generation_characteristics_mean_df = all_data_df[all_data_df['generation_rank'] <= 80]
-# generation_characteristics_mean_df = generation_characteristics_mean_df.groupby(['gen_id'])[group_features].mean()
+generation_characteristics_mean_df = all_data_df[all_data_df['generation_rank'] <= 80]
+generation_characteristics_mean_df = generation_characteristics_mean_df.groupby(['gen_id'])[group_features].mean()
 #
-# generation_characteristics_median_df.to_csv(sum_path + 'generation_mean.csv')
+generation_characteristics_mean_df.to_csv(sum_path + 'generation_mean.csv')
 # generation_characteristics_mean_df.to_csv(sum_path + 'generation_median.csv')
 # cluster_characteristics.to_csv(sum_path + 'cluster_characteristics.csv')
 #
