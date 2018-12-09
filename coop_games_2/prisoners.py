@@ -22,7 +22,7 @@ forward_view = 10
 base_retraining_frequency = .2
 generations = 1000
 decay_period = 1000
-generation_training_size = 20000
+generation_training_size = 25000
 max_training_size = 50000
 max_num_of_bots = 100
 path = r'C:\Users\trist\Documents\prisoner_models\saved_games/'
@@ -35,22 +35,27 @@ maximum_elo = 10000
 minimum_elo = 10
 starting_elo = 1000
 prob_of_trainable = 1.0
-rating_prob = .5
+rating_prob = .1
 max_tit = 3
 max_tat = 3
 base_alg_random_prob = 0.01
 random_defect_chance = .125
 max_model_depth = 10
 min_model_depth = 5
+survival_rate = .9
 
-survival_chance_limit = .8 #Scales survival rate of generaltion so scaling survival percentage only starts for the bottom n%
-
+# survival_chance_limit = .5 #Scales survival rate of generaltion so scaling survival percentage only starts for the bottom n%, doing it by chance encourages diversity
+min_survival_chance = .5
+max_survival_chance = 1.0
 # base_algorithms =  ['tit_for_tat', 'random', 'defect', 'no_forgiveness', 'tit_for_2tat', 'cooperate']
-base_algorithms =  ['{0}tit_for_{1}tat', 'random', 'defect', 'cooperate', 'no_forgiveness', 'tit_for_tat_first_defect',
-                    'tit_for_tat_random_defect', 'tit_for_tat_random_defect', 'tester']
-eff_base_algs = ['{0}tit_for_{1}tat'.format(i, j) for i in range(1, max_tit + 1)
-                 for j in range(1, max_tat + 1) ] + ['random', 'defect', 'cooperate', 'no_forgiveness',
-                                                     'tit_for_tat_first_defect', 'tit_for_tat_random_defect', 'tester']
+# base_algorithms =  ['{0}tit_for_{1}tat', 'random', 'defect', 'cooperate', 'no_forgiveness', 'tit_for_tat_first_defect',
+#                     'tit_for_tat_random_defect', 'tit_for_tat_random_defect', 'tester']
+# eff_base_algs = ['{0}tit_for_{1}tat'.format(i, j) for i in range(1, max_tit + 1)
+#                  for j in range(1, max_tat + 1) ] + ['random', 'defect', 'cooperate', 'no_forgiveness',
+#                                                      'tit_for_tat_first_defect', 'tit_for_tat_random_defect', 'tester']
+
+base_algorithms = ['random']
+eff_base_algs = ['random']
 max_data_size = 100000
 
 g_preset = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0,
@@ -676,20 +681,14 @@ for gen_id in range(generations):
         b2 = bots[1]
         print(i, epsilon, b1.b_id, b2.b_id)
 
-        g = Game(b1, b2)
-        # scores.append({'s_{0}_score'.format(b1.b_id):g.score[0],
-        #                # 's_{0}_history_len'.format(b1.b_id):b1.history_len,
-        #                # 's_{0}_history_len'.format(b2.b_id):b1.history_len, 's_{0}_model_depth'.format(b1.b_id): b1.history_len,
-        #                # 's_{0}_model_depth'.format(b2.b_id): b1.history_len,
-        #                's_{0}_score'.format(b2.b_id):g.score[1]})
-
-        # if b1.b_id > 4 and b2.b_id > 4:
-        score_list.append(g.score[0])
-        score_list.append(g.score[1])
+        if not(b1.trainable and b2.trainable and b1.trained_max and b2.trained_max):
+            g = Game(b1, b2)
+            score_list.append(g.score[0])
+            score_list.append(g.score[1])
 
         if len(score_list) > 0:
             print('trailing results', gen_id, sum(score_list)/len(score_list))
-            score_list = score_list[-generation_training_size * 2:]
+            score_list = score_list[-2000:]
 
         if (i%generation_training_size == 0 and i > 0):
             for b in bots:
@@ -707,14 +706,16 @@ for gen_id in range(generations):
             ratings.sort(key = lambda x: x['average'], reverse = True)
 
             survivors = []
-            print('generation : {0}'.format(gen_id))
-
-            for count, i in enumerate([b for b in ratings]):
-                if (len(ratings) - count)/len(ratings) > (random.random()*survival_chance_limit):
-                    print('selecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
-                else:
-                    print('rejecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
-
+            # for count, i in enumerate([b for b in ratings]):
+            #
+            #     scaled_rank = (min_survival_chance + ((len(ratings) - count)/len(ratings))*(max_survival_chance - min_survival_chance))
+            #     print(count, scaled_rank)
+            #     if scaled_rank > random.random():
+            #         print('selecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
+            #         survivors.append(i['bot'])
+            #     else:
+            #         print('rejecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
+            # print(len(survivors))
             # for i in [b for b in ratings][:int(len(ratings)*top_survival_chunk_size)]:
             #     if random.random() < top_survival_chunk_rate:
             #         print('selecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
@@ -729,9 +730,15 @@ for gen_id in range(generations):
             #     else:
             #         print('rejecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
 
+            print('generation : {0}'.format(gen_id))
+            for i in [b for b in ratings][:int(len(ratings)*survival_rate)]:
+                print('selecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
+            for i in [b for b in ratings][int(len(ratings)*survival_rate):]:
+                print('rejecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
+
             del bots
             gc.collect()
-            bots = survivors
+            bots = [b['bot'] for b in ratings][:int(len(ratings) * survival_rate)]
 
             # comp_df, ratings = rate_bots_comparative(bots, gen_id)
 
