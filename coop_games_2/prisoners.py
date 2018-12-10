@@ -22,21 +22,23 @@ forward_view = 10
 base_retraining_frequency = .2
 generations = 1000
 decay_period = 1000
-generation_training_size = 50000
-max_training_size = 100000
-min_data_to_train = 25000
+generation_training_size = 100000
+max_training_size = 400000
+min_data_to_train = 5
 max_num_of_bots = 100
 path = r'C:\Users\trist\Documents\prisoner_models\saved_games/'
 sum_path =r'C:\Users\trist\Documents\prisoner_models\saved_data/'
+starting_epsilon = .1
 epsilon = .001
 epsilon_decay = .1
-epsilon_decay_period = 100
+epsilon_decay_period = 10
+starting_epsilon_decay_period = 10
 min_epsilon = .25
 maximum_elo = 10000
 minimum_elo = 10
 starting_elo = 1000
 prob_of_trainable = 1.0
-rating_prob = .4
+rating_prob = .25
 max_tit = 3
 max_tat = 3
 base_alg_random_prob = 0.01
@@ -47,7 +49,7 @@ history_len = 24
 
 nan_move = .5
 survival_rate = .8
-drop_num = 5 #negative to ignore
+drop_num = 4 #negative to ignore
 randomize_survival_rate = True
 
 
@@ -103,7 +105,7 @@ def calculate_new_elo(outcome, player_1_elo, player_2_elo):
 
 
 class DBot():
-    def __init__(self, n, model_depth = 1, base_alg = 'random', trainable = False, generation = 0, decay_period = 100, use_reputation = 0, base_alg_random_prob = 0, alg_constants = (1, 1)):
+    def __init__(self, n, model_depth = 1, base_alg = 'random', trainable = False, generation = 0, use_reputation = 0, base_alg_random_prob = 0, alg_constants = (1, 1)):
         self.b_id = n
         self.base_alg = base_alg
         self.history_len = history_len
@@ -119,8 +121,8 @@ class DBot():
         self.generation = generation
         self.g_count = 0
         self.base_training_rate = base_retraining_frequency
-        self.decay_period = decay_period
-        self.epsilon = 1.0
+        self.decay_period = starting_epsilon_decay_period
+        self.epsilon = starting_epsilon
         self.base_alg_random_prob = base_alg_random_prob
         if use_reputation == 1:
             self.use_reputation = True
@@ -188,7 +190,7 @@ class DBot():
 
         if (len(self.x) > 0 and len(self.x) > min_data_to_train and self.trainable and (random.random() < training_prob or always) and not self.trained_max)\
                 or (not self.trained_max and len(self.x) >= max_data_size):
-            # print('training model')
+            print('training model')
             x = np.array(self.x)
             y = np.array(self.y)
 
@@ -248,8 +250,10 @@ class DBot():
     def predict_move(self, b1_move_history, b2_move_history, rep, opponent_id = 0, move_num = 0, l_epsilon = 1.0):
         # print(move_history, score_history)
 
-        epsilon = self.epsilon * ((1 - epsilon_decay)**self.g_count)
-        # print('epsilon', epsilon)
+        epsilon = self.epsilon * ((1 - epsilon_decay)**(self.g_count / self.decay_period))
+
+        # if random.random() < .01:
+        #     print('epsilon', self.epsilon, epsilon, epsilon_decay, self.g_count, self.decay_period)
 
         if self.use_model and random.random() > epsilon:
             small_move_history = b1_move_history[-self.history_len:]
