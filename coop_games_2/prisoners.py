@@ -22,9 +22,9 @@ forward_view = 10
 base_retraining_frequency = .2
 generations = 1000
 decay_period = 1000
-generation_training_size = 25000
+generation_training_size = 200
 max_training_size = 50000
-max_num_of_bots = 100
+max_num_of_bots = 10
 path = r'C:\Users\trist\Documents\prisoner_models\saved_games/'
 sum_path =r'C:\Users\trist\Documents\prisoner_models\saved_data/'
 epsilon = .001
@@ -42,11 +42,16 @@ base_alg_random_prob = 0.01
 random_defect_chance = .125
 max_model_depth = 10
 min_model_depth = 5
-survival_rate = .9
+history_len = 12
+
+survival_rate = .8
+drop_num = 2 #negative to ignore
+randomize_survival_rate = True
+
 
 # survival_chance_limit = .5 #Scales survival rate of generaltion so scaling survival percentage only starts for the bottom n%, doing it by chance encourages diversity
-min_survival_chance = .5
-max_survival_chance = 1.0
+# min_survival_chance = .5
+# max_survival_chance = 1.0
 # base_algorithms =  ['tit_for_tat', 'random', 'defect', 'no_forgiveness', 'tit_for_2tat', 'cooperate']
 # base_algorithms =  ['{0}tit_for_{1}tat', 'random', 'defect', 'cooperate', 'no_forgiveness', 'tit_for_tat_first_defect',
 #                     'tit_for_tat_random_defect', 'tit_for_tat_random_defect', 'tester']
@@ -96,7 +101,7 @@ def calculate_new_elo(outcome, player_1_elo, player_2_elo):
 
 
 class DBot():
-    def __init__(self, n, history_len = 5, model_depth = 1, base_alg = 'random', trainable = False, generation = 0, decay_period = 100, use_reputation = 0, base_alg_random_prob = 0, alg_constants = (1, 1)):
+    def __init__(self, n, model_depth = 1, base_alg = 'random', trainable = False, generation = 0, decay_period = 100, use_reputation = 0, base_alg_random_prob = 0, alg_constants = (1, 1)):
         self.b_id = n
         self.base_alg = base_alg
         self.history_len = history_len
@@ -504,7 +509,7 @@ class Game():
             b2.elo = b2_new_elo
 
         # print('total games', game_count, 'scores:', b1_score_final, b2_score_final, 'bots:',b1.get_id(),b2.get_id(),'elos:', b1.elo, b2.elo)
-
+        # print(game_count)
         # if learning and sum(score1_history)/len(score1_history) > sum(score2_history)/len(score2_history):
         #     b1.elo = calculate_new_elo(1, b1.elo, b2.elo)
         #     b2.elo = calculate_new_elo(0, b1.elo, b2.elo)
@@ -535,7 +540,7 @@ def analyze_character(a, b):
 
 
 def get_character(b):
-    n_bot = DBot(1, history_len=100, model_depth=1, base_alg='preset', trainable=False)
+    n_bot = DBot(1, model_depth=1, base_alg='preset', trainable=False)
     g = Game(b, n_bot, learning=False, max_rounds=500)
     return analyze_character(g.move1_history, g.move2_history)
 
@@ -639,7 +644,7 @@ def rate_bots_comparative(bots, gen_id):
 #     # bots = [DBot(i, history_len=2, model_depth=8) for i in range(g_count)]
 
 
-def get_random_new_bot(b_count, generation, history_len=50):
+def get_random_new_bot(b_count, generation):
     base_alg = random.choice(base_algorithms)
     # use_reputation = random.randint(0, 1)
     use_reputation = 0
@@ -650,7 +655,7 @@ def get_random_new_bot(b_count, generation, history_len=50):
     else:
         trainable = False
     alg_constants = (random.randint(1, 3), random.randint(1, 3))
-    return DBot(b_count, history_len=history_len, model_depth=model_depth, base_alg=base_alg, trainable=trainable,
+    return DBot(b_count, model_depth=model_depth, base_alg=base_alg, trainable=trainable,
          use_reputation=use_reputation, generation=generation, base_alg_random_prob=base_alg_random_prob,
                 alg_constants=alg_constants)
 
@@ -658,7 +663,7 @@ max_count = max_num_of_bots
 bots = []
 
 for i in range(max_count):
-    bots.append(get_random_new_bot(i, 0, history_len=50))
+    bots.append(get_random_new_bot(i, 0))
 g_count = len(bots)
 
 for b in bots:
@@ -672,6 +677,8 @@ gen_data = []
 
 full_results = []
 
+
+result_history = []
 for gen_id in range(generations):
     gc.collect()
 
@@ -730,15 +737,21 @@ for gen_id in range(generations):
             #     else:
             #         print('rejecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
 
-            print('generation : {0}'.format(gen_id))
-            for i in [b for b in ratings][:int(len(ratings)*survival_rate)]:
-                print('selecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
-            for i in [b for b in ratings][int(len(ratings)*survival_rate):]:
-                print('rejecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
+            if drop_num > 0:
+                survivor_index = len(bots) - drop_num
+            else:
+                survivor_index = int(len(ratings) * (1 - ((1 - survival_rate) * random.random())))
 
+            result_history.append(comp_df['average'].mean())
+            print('generation : {0}'.format(gen_id))
+            for i in [b for b in ratings][:survivor_index]:
+                print('selecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
+            for i in [b for b in ratings][survivor_index:]:
+                print('rejecting bot: {0}, {1}, {2}'.format(i['bot'].get_id(), i['score'], i['bot'].elo))
+            print(result_history)
             del bots
             gc.collect()
-            bots = [b['bot'] for b in ratings][:int(len(ratings) * survival_rate)]
+            bots = [b['bot'] for b in ratings][:survivor_index]
 
             # comp_df, ratings = rate_bots_comparative(bots, gen_id)
 
@@ -770,7 +783,7 @@ for gen_id in range(generations):
 
             while len(bots) < max_num_of_bots:
                 max_count += 1
-                new_bot =  get_random_new_bot(max_count, gen_id + 1, history_len=50)
+                new_bot =  get_random_new_bot(max_count, gen_id + 1)
                 bots.append(new_bot)
             break
 
