@@ -22,9 +22,10 @@ forward_view = 10
 base_retraining_frequency = .2
 generations = 1000
 decay_period = 1000
-generation_training_size = 200
-max_training_size = 50000
-max_num_of_bots = 10
+generation_training_size = 50000
+max_training_size = 100000
+min_data_to_train = 25000
+max_num_of_bots = 100
 path = r'C:\Users\trist\Documents\prisoner_models\saved_games/'
 sum_path =r'C:\Users\trist\Documents\prisoner_models\saved_data/'
 epsilon = .001
@@ -35,17 +36,18 @@ maximum_elo = 10000
 minimum_elo = 10
 starting_elo = 1000
 prob_of_trainable = 1.0
-rating_prob = .1
+rating_prob = .4
 max_tit = 3
 max_tat = 3
 base_alg_random_prob = 0.01
 random_defect_chance = .125
 max_model_depth = 10
 min_model_depth = 5
-history_len = 12
+history_len = 24
 
+nan_move = .5
 survival_rate = .8
-drop_num = 2 #negative to ignore
+drop_num = 5 #negative to ignore
 randomize_survival_rate = True
 
 
@@ -61,7 +63,7 @@ randomize_survival_rate = True
 
 base_algorithms = ['random']
 eff_base_algs = ['random']
-max_data_size = 100000
+max_data_size = max_training_size
 
 g_preset = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0,
       0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0,
@@ -140,7 +142,7 @@ class DBot():
                                      'next_move'] + rep_fetures
         else:
             self.feature_names = ['agent_move_{0}_moves_past'.format(i) for i in range(self.history_len - 1, -1, -1)] + \
-            ['opponent_move_{0}_moves_past'.format(i) for i in range(self.history_len, 0, -1)] + ['next_move']
+            ['opponent_move_{0}_moves_past'.format(i) for i in range(self.history_len, 0, -1)] + ['next_move', 'game_current_len']
             # print(self.feature_names)
 
         self.model = None
@@ -184,7 +186,7 @@ class DBot():
         # print('training_prob', training_prob)
 
 
-        if (len(self.x) > 0 and self.trainable and (random.random() < training_prob or always) and not self.trained_max)\
+        if (len(self.x) > 0 and len(self.x) > min_data_to_train and self.trainable and (random.random() < training_prob or always) and not self.trained_max)\
                 or (not self.trained_max and len(self.x) >= max_data_size):
             # print('training model')
             x = np.array(self.x)
@@ -226,15 +228,17 @@ class DBot():
             small_move1_history = move_history1[-self.history_len:]
             small_move2_history = move_history2[-self.history_len:]
 
+            game_len = len(move_history1)
+
             while len(small_move1_history) < self.history_len:
-                small_move1_history.insert(0, -1)
+                small_move1_history.insert(0, nan_move)
             while len(small_move2_history) < self.history_len:
-                small_move2_history.insert(0, -1)
+                small_move2_history.insert(0, nan_move)
 
             if self.use_reputation:
-                new_x = small_move1_history + small_move2_history + [move] + opponent_reputation
+                new_x = small_move1_history + small_move2_history + [move] + opponent_reputation + [game_len]
             else:
-                new_x = small_move1_history + small_move2_history + [move]
+                new_x = small_move1_history + small_move2_history + [move] + [game_len]
 
             self.x.append(new_x)
             self.y.append(score)
@@ -250,18 +254,19 @@ class DBot():
         if self.use_model and random.random() > epsilon:
             small_move_history = b1_move_history[-self.history_len:]
             small_score_history = b2_move_history[-self.history_len:]
+            game_len = len(b1_move_history)
 
             while len(small_move_history) < self.history_len:
-                small_move_history.insert(0, -1)
+                small_move_history.insert(0, nan_move)
             while len(small_score_history) < self.history_len:
-                small_score_history.insert(0, -1)
+                small_score_history.insert(0, nan_move)
 
             if self.use_reputation:
-                x1 = small_move_history + small_score_history + [1] + rep
-                x0 = small_move_history + small_score_history + [0] + rep
+                x1 = small_move_history + small_score_history + [1] + rep + [game_len]
+                x0 = small_move_history + small_score_history + [0] + rep + [game_len]
             else:
-                x1 = small_move_history + small_score_history + [1]
-                x0 = small_move_history + small_score_history + [0]
+                x1 = small_move_history + small_score_history + [1] + [game_len]
+                x0 = small_move_history + small_score_history + [0] + [game_len]
 
             # dnn_input1 = self.scaler.transform(np.array([x1]).astype(np.float32))
             # dnn_input0 = self.scaler.transform(np.array([x0]).astype(np.float32))
