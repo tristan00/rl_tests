@@ -12,6 +12,11 @@ from sklearn.tree import DecisionTreeRegressor, export_graphviz
 from sklearn.ensemble import RandomForestRegressor
 import pickle
 import gc
+from sklearn import tree
+
+from xgboost import XGBClassifier, XGBRegressor
+from xgboost import plot_tree, to_graphviz
+import xgboost as xgb
 
 
 elo_d = 500
@@ -22,34 +27,34 @@ forward_view = 10
 base_retraining_frequency = .2
 generations = 1000
 decay_period = 1000
-generation_training_size = 100000
+generation_training_size = 40000
 max_training_size = 400000
 min_data_to_train = 5
-max_num_of_bots = 100
+max_num_of_bots = 50
 path = r'C:\Users\trist\Documents\prisoner_models\saved_games/'
 sum_path =r'C:\Users\trist\Documents\prisoner_models\saved_data/'
 starting_epsilon = .1
 epsilon = .001
 epsilon_decay = .1
-epsilon_decay_period = 10
-starting_epsilon_decay_period = 10
-min_epsilon = .25
+epsilon_decay_period = 4
+starting_epsilon_decay_period = 50
+min_epsilon = .001
 maximum_elo = 10000
 minimum_elo = 10
 starting_elo = 1000
-prob_of_trainable = 1.0
-rating_prob = .25
+prob_of_trainable = .5
+rating_prob = .1
 max_tit = 3
 max_tat = 3
 base_alg_random_prob = 0.01
 random_defect_chance = .125
-max_model_depth = 10
+max_model_depth = 12
 min_model_depth = 5
 history_len = 24
 
-nan_move = .5
+nan_move = np.nan
 survival_rate = .8
-drop_num = 4 #negative to ignore
+drop_num = 1 #negative to ignore
 randomize_survival_rate = True
 
 
@@ -57,14 +62,14 @@ randomize_survival_rate = True
 # min_survival_chance = .5
 # max_survival_chance = 1.0
 # base_algorithms =  ['tit_for_tat', 'random', 'defect', 'no_forgiveness', 'tit_for_2tat', 'cooperate']
-# base_algorithms =  ['{0}tit_for_{1}tat', 'random', 'defect', 'cooperate', 'no_forgiveness', 'tit_for_tat_first_defect',
-#                     'tit_for_tat_random_defect', 'tit_for_tat_random_defect', 'tester']
-# eff_base_algs = ['{0}tit_for_{1}tat'.format(i, j) for i in range(1, max_tit + 1)
-#                  for j in range(1, max_tat + 1) ] + ['random', 'defect', 'cooperate', 'no_forgiveness',
-#                                                      'tit_for_tat_first_defect', 'tit_for_tat_random_defect', 'tester']
+base_algorithms =  ['{0}tit_for_{1}tat', 'random', 'defect', 'cooperate', 'no_forgiveness', 'tit_for_tat_first_defect',
+                    'tit_for_tat_random_defect', 'tit_for_tat_random_defect', 'tester']
+eff_base_algs = ['{0}tit_for_{1}tat'.format(i, j) for i in range(1, max_tit + 1)
+                 for j in range(1, max_tat + 1) ] + ['random', 'defect', 'cooperate', 'no_forgiveness',
+                                                     'tit_for_tat_first_defect', 'tit_for_tat_random_defect', 'tester']
 
-base_algorithms = ['random']
-eff_base_algs = ['random']
+# base_algorithms = ['random']
+# eff_base_algs = ['random']
 max_data_size = max_training_size
 
 g_preset = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0,
@@ -96,6 +101,10 @@ g_preset = [0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0,
       1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1,
       1]
 
+
+xgb_params = {
+    'learning_rate':.1,
+    }
 
 
 def calculate_new_elo(outcome, player_1_elo, player_2_elo):
@@ -166,7 +175,15 @@ class DBot():
     def save_model(self):
         with open(path + '/agent_{0}.pkl'.format(self.b_id), 'wb') as f:
             pickle.dump(self.model, f)
-        export_graphviz(self.model, out_file=path + '/agent_{0}.txt'.format(self.get_id()), feature_names=self.feature_names)
+        # for count, tree_in_forest in enumerate(self.model.estimators_):
+        #     export_graphviz(tree_in_forest, out_file=path + '/agent_{0}_{1}.txt'.format(self.get_id(), count),
+        #                         feature_names=self.feature_names)
+        # export_graphviz(self.model, out_file=path + '/agent_{0}.txt'.format(self.get_id()), feature_names=self.feature_names)
+
+        a = to_graphviz(self.model, num_trees=self.model.best_iteration)
+        with open(path + '/agent_{0}.txt'.format(self.get_id()), 'w') as f:
+            f.write(str(a))
+
 
 
     def get_id(self):
@@ -183,14 +200,14 @@ class DBot():
 
     def train_model(self, always = False, final = False):
 
-        training_prob = self.base_training_rate * (.5 ** (self.g_count / self.decay_period))
+        training_prob = max(min_epsilon, self.base_training_rate * (.5 ** (self.g_count / self.decay_period)))
         # print(len(self.x), training_prob, self.trained_max)
         # print('training_prob', training_prob)
 
 
         if (len(self.x) > 0 and len(self.x) > min_data_to_train and self.trainable and (random.random() < training_prob or always) and not self.trained_max)\
                 or (not self.trained_max and len(self.x) >= max_data_size):
-            print('training model')
+            print('training model', training_prob)
             x = np.array(self.x)
             y = np.array(self.y)
 
@@ -199,9 +216,20 @@ class DBot():
                 sample_portion = 1- max_training_size/x.shape[0]
                 x, _, y, _ = train_test_split(x, y, test_size = sample_portion)
 
-            # self.model = RandomForestRegressor(max_depth=self.model_depth, n_estimators=10)
-            self.model = DecisionTreeRegressor(max_depth=self.model_depth)
-            self.model.fit(x, y)
+            # # self.model = RandomForestRegressor(max_depth=self.model_depth, n_estimators=10)
+            # self.model = DecisionTreeRegressor(max_depth=self.model_depth)
+            # # self.model = RandomForestRegressor(max_depth=self.model_depth, n_estimators=10)
+
+            # self.model = XGBRegressor()
+
+            x, x2, y, y2 = train_test_split(x, y, test_size=.1)
+            dtrain = xgb.DMatrix(x, label = y, feature_names=self.feature_names)
+            dval = xgb.DMatrix(x2, label = y2, feature_names=self.feature_names)
+            watchlist = [(dtrain, 'train'), (dval, 'eval')]
+            xgb_params_temp = copy.deepcopy(xgb_params)
+            xgb_params_temp['max_depth'] = self.model_depth
+            self.model = xgb.train(xgb_params_temp, dtrain, 10, watchlist, early_stopping_rounds=2)
+            # self.model.fit(x, y, eval_set = dval)
             # train_x, val_x, train_y, val_y = train_test_split(x, y, test_size=.01, random_state=1)
             # lgtrain = lgb.Dataset(train_x, train_y)
             # lgvalid = lgb.Dataset(val_x, val_y,)
@@ -277,9 +305,11 @@ class DBot():
             #
             # x1_val = self.dnn.predict(dnn_input1)
             # x0_val = self.dnn.predict(dnn_input0)
+            x1_m = xgb.DMatrix(np.array([x1]), feature_names=self.feature_names)
+            x0_m = xgb.DMatrix(np.array([x0]), feature_names=self.feature_names)
 
-            x1_val = self.model.predict(np.array([x1]))
-            x0_val = self.model.predict(np.array([x0]))
+            x1_val = self.model.predict(x1_m)
+            x0_val = self.model.predict(x0_m)
 
             # print(x0_val[0], x1_val[0])
 
@@ -690,7 +720,7 @@ full_results = []
 result_history = []
 for gen_id in range(generations):
     gc.collect()
-
+    score_list = []
     for i in range(100000):
         random.shuffle(bots)
         b1 = bots[0]
