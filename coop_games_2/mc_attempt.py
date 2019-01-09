@@ -31,16 +31,17 @@ min_epsilon = .001
 maximum_elo = 10000
 minimum_elo = 10
 starting_elo = 1000
-prob_of_trainable = .5
-rating_prob = .1
+prob_of_trainable = .9
+rating_prob = .5
 max_tit = 3
 max_tat = 3
 base_alg_random_prob = 0.01
 random_defect_chance = .125
 max_model_depth = 12
 min_model_depth = 5
-history_len = 25
+history_len = 16
 
+mc_discount_rate = 0
 nan_move = np.nan
 survival_rate = .8
 drop_num = 1 #negative to ignore
@@ -51,11 +52,14 @@ randomize_survival_rate = True
 # min_survival_chance = .5
 # max_survival_chance = 1.0
 # base_algorithms =  ['tit_for_tat', 'random', 'defect', 'no_forgiveness', 'tit_for_2tat', 'cooperate']
-base_algorithms =  ['{0}tit_for_{1}tat', 'random', 'defect', 'cooperate', 'no_forgiveness', 'tit_for_tat_first_defect',
-                    'tit_for_tat_random_defect', 'tit_for_tat_random_defect', 'tester']
-eff_base_algs = ['{0}tit_for_{1}tat'.format(i, j) for i in range(1, max_tit + 1)
-                 for j in range(1, max_tat + 1) ] + ['random', 'defect', 'cooperate', 'no_forgiveness',
-                                                     'tit_for_tat_first_defect', 'tit_for_tat_random_defect', 'tester']
+# base_algorithms =  ['{0}tit_for_{1}tat', 'random', 'defect', 'cooperate', 'no_forgiveness', 'tit_for_tat_first_defect',
+#                     'tit_for_tat_random_defect', 'tit_for_tat_random_defect', 'tester']
+# eff_base_algs = ['{0}tit_for_{1}tat'.format(i, j) for i in range(1, max_tit + 1)
+#                  for j in range(1, max_tat + 1) ] + ['random', 'defect', 'cooperate', 'no_forgiveness',
+#                                                      'tit_for_tat_first_defect', 'tit_for_tat_random_defect', 'tester']
+
+base_algorithms = ['random']
+eff_base_algs = ['random']
 
 # base_algorithms = ['random']
 # eff_base_algs = ['random']
@@ -102,13 +106,18 @@ class MC_Model():
         if str(input_data.tolist()) in self.data and\
                 0 in self.data[str(input_data.tolist())] \
                 and 1 in self.data[str(input_data.tolist())]:
+
+            # print('self.data keys', len(self.data))
             s0 = self.data[str(input_data.tolist())].get(0, dict())
             v0 = s0.get('sum', 0)/max(s0.get('count', 0), 1)
+            v0_d = v0*((1-mc_discount_rate)**s0.get('count', 0))
+            # v0_d = v0
 
-            s1 = self.data[str(input_data.tolist())].get(0, dict())
+            s1 = self.data[str(input_data.tolist())].get(1, dict())
             v1 = s1.get('sum', 0)/max(s1.get('count', 0), 1)
+            v1_d = v1 * ((1 - mc_discount_rate) ** s1.get('count', 0))
+            # v1_d = v1
 
-            #TODO: make initial learning probabilistic
             if s0['count'] == 0 and s1['count'] == 0:
                 return random.randint(0,1)
             if s0['count'] == 0:
@@ -116,15 +125,11 @@ class MC_Model():
             if s1['count'] == 0:
                 return 1
 
-            if v1 > v0:
+            if v1_d > v0_d:
                 return 1
-            elif v0 < v1:
+            elif v0_d < v1_d:
                 return 0
 
-        else:
-            # self.data[str(input_data.tolist())] = {0:{'sum':0, 'count':0}}
-            # self.data[str(input_data.tolist())] = {1:{'sum': 0, 'count': 0}}
-            return None
 
 
     def take_input(self, input_data, choice, result):
@@ -759,8 +764,8 @@ def get_random_new_bot(b_count, generation):
         trainable = True
     else:
         trainable = False
-    possible_base_learner_types = ['gbm', 'mc']
-    # possible_base_learner_types = ['mc']
+    # possible_base_learner_types = ['gbm', 'mc']
+    possible_base_learner_types = ['mc']
     alg_constants = (random.randint(1, 3), random.randint(1, 3))
     return DBot(b_count, model_depth=model_depth, base_alg=base_alg, trainable=trainable,
          use_reputation=use_reputation, generation=generation, base_alg_random_prob=base_alg_random_prob,
