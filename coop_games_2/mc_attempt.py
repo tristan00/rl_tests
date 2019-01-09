@@ -16,10 +16,10 @@ forward_view = 10
 base_retraining_frequency = .2
 generations = 1000
 decay_period = 1000
-generation_training_size = 100000
-max_training_size = 400000
+generation_training_size = 1000000
+max_training_size = 1000000
 min_data_to_train = 5
-max_num_of_bots = 20
+max_num_of_bots = 100
 path = r'C:\Users\trist\Documents\prisoner_models\saved_games/'
 sum_path =r'C:\Users\trist\Documents\prisoner_models\saved_data/'
 starting_epsilon = .1
@@ -39,7 +39,7 @@ base_alg_random_prob = 0.01
 random_defect_chance = .125
 max_model_depth = 12
 min_model_depth = 5
-history_len = 20
+history_len = 25
 
 nan_move = np.nan
 survival_rate = .8
@@ -311,7 +311,7 @@ class DBot():
 
             if self.base_learner_type != 'gbm' and self.trainable and not self.model:
                 self.model = MC_Model()
-            if self.base_learner_type != 'gbm' and self.trainable:
+            if self.base_learner_type != 'gbm' and self.trainable and not self.trained_max:
                 x0_m = np.array([new_x])
                 nm_col = self.feature_names.index('next_move')
                 x_d = np.delete(x0_m, nm_col, axis=1)
@@ -695,6 +695,11 @@ def rate_bots_comparative(bots, gen_id):
         else:
             df.loc[i.get_id(), 'trainable'] = 0
 
+        if i.base_learner_type != 'gbm':
+            df.loc[i.get_id(), 'mc'] = 1
+        else:
+            df.loc[i.get_id(), 'mc'] = 0
+
     df['model_depth'] = 0
     df['using_reputation'] = 0
     df['base_alg_random_prob'] = 0
@@ -754,8 +759,8 @@ def get_random_new_bot(b_count, generation):
         trainable = True
     else:
         trainable = False
-    # possible_base_learner_types = ['gbm', 'mc']
-    possible_base_learner_types = ['mc']
+    possible_base_learner_types = ['gbm', 'mc']
+    # possible_base_learner_types = ['mc']
     alg_constants = (random.randint(1, 3), random.randint(1, 3))
     return DBot(b_count, model_depth=model_depth, base_alg=base_alg, trainable=trainable,
          use_reputation=use_reputation, generation=generation, base_alg_random_prob=base_alg_random_prob,
@@ -867,7 +872,8 @@ for gen_id in range(generations):
              'depth': comp_df['depth'].mean(),
              'avg_generation': comp_df['generation'].mean(),
              'using_reputation': comp_df['using_reputation'].mean(),
-             'trainable': comp_df['trainable'].mean()}
+             'trainable': comp_df['trainable'].mean(),
+             'mc': comp_df['mc'].mean()}
 
             for b_a in eff_base_algs:
                 for t in ['trainable', 'not_trainable']:
