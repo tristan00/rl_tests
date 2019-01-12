@@ -16,8 +16,8 @@ forward_view = 10
 base_retraining_frequency = .2
 generations = 1000
 decay_period = 1000
-generation_training_size = 1000000
-max_training_size = 1000000
+generation_training_size = 100000
+max_training_size = 10000000
 min_data_to_train = 5
 max_num_of_bots = 100
 path = r'C:\Users\trist\Documents\prisoner_models\saved_games/'
@@ -39,7 +39,7 @@ base_alg_random_prob = 0.01
 random_defect_chance = .125
 max_model_depth = 12
 min_model_depth = 5
-history_len = 16
+history_len = 12
 
 mc_discount_rate = 0
 nan_move = np.nan
@@ -51,15 +51,15 @@ randomize_survival_rate = True
 # survival_chance_limit = .5 #Scales survival rate of generaltion so scaling survival percentage only starts for the bottom n%, doing it by chance encourages diversity
 # min_survival_chance = .5
 # max_survival_chance = 1.0
-# base_algorithms =  ['tit_for_tat', 'random', 'defect', 'no_forgiveness', 'tit_for_2tat', 'cooperate']
-# base_algorithms =  ['{0}tit_for_{1}tat', 'random', 'defect', 'cooperate', 'no_forgiveness', 'tit_for_tat_first_defect',
-#                     'tit_for_tat_random_defect', 'tit_for_tat_random_defect', 'tester']
-# eff_base_algs = ['{0}tit_for_{1}tat'.format(i, j) for i in range(1, max_tit + 1)
-#                  for j in range(1, max_tat + 1) ] + ['random', 'defect', 'cooperate', 'no_forgiveness',
-#                                                      'tit_for_tat_first_defect', 'tit_for_tat_random_defect', 'tester']
+base_algorithms =  ['tit_for_tat', 'random', 'defect', 'no_forgiveness', 'tit_for_2tat', 'cooperate']
+base_algorithms =  ['{0}tit_for_{1}tat', 'random', 'defect', 'cooperate', 'no_forgiveness', 'tit_for_tat_first_defect',
+                    'tit_for_tat_random_defect', 'tit_for_tat_random_defect', 'tester']
+eff_base_algs = ['{0}tit_for_{1}tat'.format(i, j) for i in range(1, max_tit + 1)
+                 for j in range(1, max_tat + 1) ] + ['random', 'defect', 'cooperate', 'no_forgiveness',
+                                                     'tit_for_tat_first_defect', 'tit_for_tat_random_defect', 'tester']
 
-base_algorithms = ['random']
-eff_base_algs = ['random']
+# base_algorithms = ['random']
+# eff_base_algs = ['random']
 
 # base_algorithms = ['random']
 # eff_base_algs = ['random']
@@ -102,7 +102,7 @@ class MC_Model():
         self.data = dict()
 
 
-    def predict(self, input_data):
+    def predict(self, input_data, learning=True):
         if str(input_data.tolist()) in self.data and\
                 0 in self.data[str(input_data.tolist())] \
                 and 1 in self.data[str(input_data.tolist())]:
@@ -110,13 +110,20 @@ class MC_Model():
             # print('self.data keys', len(self.data))
             s0 = self.data[str(input_data.tolist())].get(0, dict())
             v0 = s0.get('sum', 0)/max(s0.get('count', 0), 1)
-            v0_d = v0*((1-mc_discount_rate)**s0.get('count', 0))
+            # v0_d = v0*((1-mc_discount_rate)**s0.get('count', 0))
             # v0_d = v0
 
             s1 = self.data[str(input_data.tolist())].get(1, dict())
             v1 = s1.get('sum', 0)/max(s1.get('count', 0), 1)
-            v1_d = v1 * ((1 - mc_discount_rate) ** s1.get('count', 0))
+            # v1_d = v1 * ((1 - mc_discount_rate) ** s1.get('count', 0))
             # v1_d = v1
+
+            if learning:
+                v0_d = v0 * ((1 - mc_discount_rate) ** s0.get('count', 0))
+                v1_d = v1 * ((1 - mc_discount_rate) ** s1.get('count', 0))
+            else:
+                v0_d = v0
+                v1_d = v1
 
             if s0['count'] == 0 and s1['count'] == 0:
                 return random.randint(0,1)
@@ -328,7 +335,7 @@ class DBot():
 
 
 
-    def predict_move(self, b1_move_history, b2_move_history, rep, opponent_id = 0, move_num = 0, l_epsilon = 1.0):
+    def predict_move(self, b1_move_history, b2_move_history, rep, opponent_id = 0, move_num = 0, l_epsilon = 1.0, learning=True):
         # print(move_history, score_history)
 
         epsilon = self.epsilon * ((1 - epsilon_decay)**(self.g_count / self.decay_period))
@@ -380,7 +387,7 @@ class DBot():
                 x_d = np.delete(x_d, x_d.shape[1] - 1, axis=1)
                 # x_m = x0_m[:, nm_col]
                 # x_d = np.hstack([x0_m[:nm_col, nm_col], x0_m[nm_col + 1:, nm_col]])
-                pred_move =  self.model.predict(x_d)
+                pred_move =  self.model.predict(x_d, learning=learning)
                 if pred_move:
                     return pred_move
             # else:
@@ -496,8 +503,6 @@ class DBot():
 
 class Game():
     def __init__(self, b1, b2, learning = True, max_rounds = 250):
-
-
         b1.g_count += 1
         b2.g_count += 1
 
@@ -524,8 +529,8 @@ class Game():
             # b1_move = b1.predict_move(move1_history, score1_history, l_epsilon = epsilon)
             # b2_move = b2.predict_move(move2_history, score2_history, l_epsilon = epsilon)
 
-            b1_move = b1.predict_move(move1_history, move2_history, b2_rep)
-            b2_move = b2.predict_move(move2_history, move1_history, b1_rep)
+            b1_move = b1.predict_move(move1_history, move2_history, b2_rep, learning=learning)
+            b2_move = b2.predict_move(move2_history, move1_history, b1_rep, learning=learning)
 
             input1_1_history.append(copy.deepcopy(move1_history))
             input1_2_history.append(copy.deepcopy(score1_history))
@@ -586,8 +591,8 @@ class Game():
 
         for count, (i1, i2, i3, i4, i5, i6, i7, i8) in enumerate(zip(move1_history, move2_history, score1_history, score2_history, input1_1_history, input2_1_history, input1_2_history, input2_2_history)):
 
-            fs1 = sum(score1_history[count:count+b1.history_len])/len(score1_history[count:count+b1.history_len])
-            fs2 = sum(score2_history[count:count+b2.history_len])/len(score2_history[count:count+b2.history_len])
+            fs1 = sum(score1_history[count:])/len(score1_history[count:])
+            fs2 = sum(score2_history[count:])/len(score2_history[count:])
             b1.give_feedback(i5, i6, i1, fs1, b2_rep)
             b2.give_feedback(i6, i5, i2, fs2, b1_rep)
 
@@ -667,7 +672,10 @@ def rate_bots_comparative(bots, gen_id):
     for count1, b1 in enumerate(bots):
         average = 0
         comp_bots = [b for b in bots if b.b_id != b1.b_id]
-        comp_bots = random.sample(comp_bots, comp_num)
+        # try:
+        #     comp_bots = random.sample(comp_bots, comp_num)
+        # except:
+        #     pass
 
         for count2, b2 in enumerate(comp_bots):
             if b1.b_id != b2.b_id:
@@ -794,7 +802,7 @@ result_history = []
 for gen_id in range(generations):
     gc.collect()
     score_list = []
-    for i in range(100000):
+    for i in range(10000000):
         random.shuffle(bots)
         b1 = bots[0]
         b2 = bots[1]
@@ -807,7 +815,7 @@ for gen_id in range(generations):
 
         if len(score_list) > 0:
             print('trailing results', gen_id, sum(score_list)/len(score_list))
-            score_list = score_list[-2000:]
+            # score_list = score_list[-2000:]
 
         if (i%generation_training_size == 0 and i > 0):
             for b in bots:
