@@ -33,7 +33,8 @@ warnings.filterwarnings("ignore")
 max_record_len = 1000
 option_space_size = 4
 epsilon = .05
-
+screen_size = 512
+step_size = 4
 
 
 def get_net(x1, x2):
@@ -56,7 +57,7 @@ def get_net(x1, x2):
 
 class Agent(pygame.sprite.Sprite):
     def __init__(self, x, y, bounds, range = 20, kill_angle = .02, team = None, a_id = None, alive = True,
-                 color = None, pixels_per_square = 8, path = None, g_id = 0, use_model = False, starting_score = 5):
+                 color = None, pixels_per_square = 1, path = None, g_id = 0, use_model = False, starting_score = 25):
         super(Agent, self).__init__()
         self.x = x
         self.y = y
@@ -77,8 +78,8 @@ class Agent(pygame.sprite.Sprite):
         self.image = pygame.Surface([self.width, self.height])
         self.image.fill(color)
         self.rect = self.image.get_rect()
-        self.rect.centerx = self.x * self.pixels_per_square
-        self.rect.centery = self.y * self.pixels_per_square
+        self.rect.centerx = self.x
+        self.rect.centery = self.y
         self.alive = True
         self.path = path
         self.g_id = g_id
@@ -98,8 +99,8 @@ class Agent(pygame.sprite.Sprite):
         self.image = pygame.Surface([self.width, self.height])
         self.image.fill(self.color)
         self.rect = self.image.get_rect()
-        self.rect.centerx = self.x * self.pixels_per_square
-        self.rect.centery = self.y * self.pixels_per_square
+        self.rect.centerx = self.x
+        self.rect.centery = self.y
         self.g_id = g_id
         self.move_count = 0
         self.logs = []
@@ -107,6 +108,12 @@ class Agent(pygame.sprite.Sprite):
             self.load_models()
         # self.load_models()
 
+    def redraw(self):
+        self.image = pygame.Surface([self.width, self.height])
+        self.image.fill(self.color)
+        self.rect = self.image.get_rect()
+        self.rect.centerx = self.x
+        self.rect.centery = self.y
 
     #Main function
     def run_turn(self):
@@ -141,12 +148,12 @@ class Agent(pygame.sprite.Sprite):
                 x_s = math.cos(a_s)
                 y_s = math.sin(a_s)
 
-            self.logs.append({'s_index':s_index, 'move':self.move_count, 'x':self.rect.centerx, 'y':self.rect.centery})
-            # self.move(x_m, y_m)
-            result['shot'] = self.shoot(x_s, y_s)
+            self.logs.append({'s_index':s_index, 'move':self.move_count, 'x':self.rect.centerx, 'y':self.rect.centery, 'score':self.score})
+            x_s *= step_size
+            y_s *= step_size
+            self.move(x_s, y_s)
             self.move_count += 1
         return result
-
 
     #Action functions
     def move(self, x_m, y_m):
@@ -154,11 +161,6 @@ class Agent(pygame.sprite.Sprite):
             self.x = self.x + x_m
         if self.y + y_m < self.bounds[3] and self.y + y_m >= self.bounds[2]:
             self.y = self.y + y_m
-
-
-
-
-        self.update_center()
 
 
     def shoot(self, x_m, y_m):
@@ -205,17 +207,9 @@ class Agent(pygame.sprite.Sprite):
     def update_center(self):
         self.width = int(math.sqrt(self.score))
         self.height = int(math.sqrt(self.score))
-        self.color = color
-        self.pixels_per_square = math.sqrt(self.score)
-
-        self.image = pygame.Surface([self.width, self.height])
-        self.image.fill(color)
         self.rect = self.image.get_rect()
-        self.rect.centerx = self.x * self.pixels_per_square
-        self.rect.centery = self.y * self.pixels_per_square
-
-        self.rect.centerx = self.x * self.pixels_per_square
-        self.rect.centery = self.y * self.pixels_per_square
+        self.rect.centerx = self.x
+        self.rect.centery = self.y
 
 
     def log_turns(self):
@@ -226,19 +220,6 @@ class Agent(pygame.sprite.Sprite):
             with open(self.path + '/agent_{0}/'.format(self.a_id) + 'agent_{0}_{1}.json'.format(self.g_id, self.a_id), 'w') as f:
                 # print(self.logs)
                 json.dump(self.logs, f)
-
-
-    def win(self):
-        # print(self.logs)
-        for i in self.logs:
-            i.update({'result':1})
-        self.log_turns()
-
-
-    def lose(self):
-        for i in self.logs:
-            i.update({'result':0})
-        self.log_turns()
 
 
     def load_models(self):
@@ -328,7 +309,6 @@ def train_models(path, a_id, t_id):
                     # y1.append(y1_t2)
                     y2.append(y2_t2)
                     results.append(res)
-
         except:
             print(i)
             traceback.print_exc()
@@ -368,7 +348,6 @@ def train_models(path, a_id, t_id):
     net.fit([x_train, y2_train], train_results, validation_data=([x_val, y2_val], val_results), epochs=100, callbacks=[cb1, cb2], batch_size=chunk_size)
 
 
-
 class Board():
 
     def __init__(self, path = None, g_id = 0, agents = 8):
@@ -376,13 +355,13 @@ class Board():
         self.teams = []
 
         for i in range(agents):
-            new_team = [Agent(team = i, a_id = i, bounds=(16, 16, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(int(255 - (i *(agents/255))), int(255 - (i *(agents/1000))), int(-255 + (i *(agents/255)))), g_id = g_id, path=path, range = 30, kill_angle=.2, use_model = random.choice([True, True]))]
+            new_team = [Agent(team = i, a_id = i, bounds=(16, screen_size - 16, 16, screen_size - 16), x = random.uniform(16, screen_size - 16), y = random.uniform(16, screen_size - 16), color=(int(255 - (i *(agents/255))), int(255 - (i *(agents/1000))), int( (i *(agents/255)))), g_id = g_id, path=path, range = 30, kill_angle=.2, use_model = random.choice([True, True]), starting_score = 36)]
             self.teams.append(new_team)
 
         num_of_food = 100
         self.food = []
         for i in range(num_of_food):
-            self.food.append(Agent(team = -1, a_id = -i, bounds=(16, 16, 16, 47), x = random.uniform(16, 47), y = random.uniform(16, 47), color=(128, 128,128), g_id = g_id, path=path, score = random.randrange(1,3)))
+            self.food.append(Agent(team = -1, a_id = -i, bounds=(16, screen_size - 16, 16, screen_size - 16), x = random.uniform(16, screen_size - 16), y = random.uniform(16, screen_size - 16), color=(128, 128,128), g_id = g_id, path=path, starting_score = random.randrange(1,25)))
 
 
     def test_collision(self, a1, a2):
@@ -418,6 +397,7 @@ class Board():
                     opposing_agents.extend(i)
 
             for i in opposing_agents:
+
                 data.append(i.score)
                 data.append(i.x)
                 data.append(i.y)
@@ -427,6 +407,7 @@ class Board():
                     data.append(0)
 
                 for a in t:
+                    data.append(math.atan2(i.y - a.y, i.x - a.x))
                     self.test_collision(a, i)
 
             for i in self.food:
@@ -435,7 +416,12 @@ class Board():
                 data.append(i.y)
 
                 for a in t:
+                    data.append(math.atan2(i.y - a.y, i.x - a.x))
                     self.test_collision(a, i)
+
+        agents = []
+        for t in self.teams:
+            agents.extend(t)
 
         return data
 
@@ -443,19 +429,23 @@ class Board():
     def refresh(self, path = None, g_id = 0):
         for t in self.teams:
             for count, i in enumerate(t):
-                i.refresh( bounds=(16, 47, 16, 47), x = random.randint(16, 47), y = random.randint(16, 47), g_id = g_id)
+                i.refresh( bounds=(16, screen_size - 16, 16, screen_size - 16), x = random.randint(16, screen_size - 16), y = random.randint(16, screen_size - 16), g_id = g_id)
+        for t in self.food:
+            for count, i in enumerate(t):
+                i.refresh( bounds=(16, screen_size - 16, 16, screen_size - 16), x = random.randint(16, screen_size - 16), y = random.randint(16, screen_size - 16), g_id = g_id)
 
 
     def render_agents(self):
-        alive_list= []
+        alive_list = []
         for i in self.teams:
             for j in i:
                 if j.alive:
+                    j.redraw()
                     alive_list.append(j)
         for i in self.food:
             if i.alive:
+                i.redraw()
                 alive_list.append(i)
-
         return alive_list
 
 
@@ -466,8 +456,7 @@ class Board():
 
         for i in team_l:
              i.run_turn()
-
-
+        self.get_board_representation()
         return shots
 
 
@@ -484,7 +473,6 @@ class Board():
         return True
 
 
-
     def get_result(self):
         if self.check_if_game_over():
             for c, i in enumerate(self.teams):
@@ -495,17 +483,15 @@ class Board():
                         return result
 
 
-
 def main():
     path = '/home/td/Documents/rl_tests/swarm_3/agario/'
-
     if not os.path.exists(path + '/images/'):
         os.makedirs(path + '/images/')
     if not os.path.exists(path + '/data/'):
         os.makedirs(path + '/data/')
 
     pygame.init()
-    screen = pygame.display.set_mode((512, 512))
+    screen = pygame.display.set_mode((screen_size, screen_size))
     pygame.display.set_caption('test')
     pygame.mouse.set_visible(0)
     screen.fill((0, 0, 0))
@@ -519,12 +505,13 @@ def main():
     game_count_start = 0
     g = game_count_start
     result_dict = {}
-
-    b = Board(path=path, g_id=g)
+    agent_num = 2
+    b = Board(path=path, g_id=g, agents=agent_num)
 
     while g < game_count:
         screen.fill((0, 0, 0))
         s = b.render_agents()
+        print(s)
         for sprite_one in s:
             screen.blit(sprite_one.image, (sprite_one.rect.centerx,sprite_one.rect.centery))
         pygame.display.flip()
@@ -538,64 +525,37 @@ def main():
 
         count = 0
         while not b.check_if_game_over() and count < max_record_len:
-            for turn in [1, 2]:
+            print(count)
+            for turn in range(agent_num):
                 gc.collect()
-                # pygame.image.save(screen, path + '/images/' + "last_img.jpeg")
-                # pygame.image.save(screen, path + '/images/' + "g_img_{0}_{1}_{2}.jpeg".format(g, count, turn))
-
                 data = b.get_board_representation()
                 with open(path + '/data/' + "last_data.plk", 'wb') as f:
                     pickle.dump(data, f)
                 with open(path + '/data/' + "g_img_{0}_{1}_{2}.plk".format(g, count, turn), 'wb') as f:
                     pickle.dump(data, f)
 
-                time.sleep(.001)
                 shots = b.run_turn(turn)
                 screen.fill((0, 0, 0))
                 for s in shots:
-                    # print(s)
                     pygame.draw.line(screen, (0, 255, 0), s[0], s[1])
-                s = b.render_agents()
+                screen.fill((0, 0, 0))
                 for sprite_one in s:
-                    screen.blit(sprite_one.image, (sprite_one.rect.centerx, sprite_one.rect.centery))
+                   screen.blit(sprite_one.image, (sprite_one.rect.centerx, sprite_one.rect.centery))
                 pygame.display.flip()
-                # time.sleep(1)
 
             count += 1
-        # if b.check_if_game_over():
         g += 1
         print(g, time.time() - st)
-        b.end_game()
         result = b.get_result()
-        result_dict.setdefault(result, 0)
-        result_dict[result] += 1
-        print('results', result_dict)
         result_dicts.append({'g':g, 'result':result})
         df = pd.DataFrame.from_dict(result_dicts)
         df.to_csv(path + 'res.csv', index=False)
         if g % 5000 == 0 and g > 10000:
             del b
-            gc.collect()
-            train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 1, 1)
-            gc.collect()
-            train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 2, 1)
-            gc.collect()
-            train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 3, 1)
-            gc.collect()
-            train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 4, 1)
-            gc.collect()
-            train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 5, 1)
-            gc.collect()
-            train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 6, 2)
-            gc.collect()
-            train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 7, 2)
-            gc.collect()
-            train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 8, 2)
-            gc.collect()
-            train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 9, 2)
-            gc.collect()
-            train_models('/home/td/Documents/rl_tests/swarm_1/dual/', 10, 2)
-            gc.collect()
+
+            for a in range(agent_num):
+                gc.collect()
+                train_models('/home/td/Documents/rl_tests/swarm_1/dual/', a, a)
             b = Board(path=path, g_id=g)
         b.refresh(path=path, g_id=g)
 
