@@ -31,7 +31,7 @@ def get_net(x_a, x_b):
     x1 = layers.Dense(256, activation='relu', name='dl1')(x_in)
     x2 = layers.Dense(256, activation='relu', name='dl2')(x1)
     x3 = layers.Dense(256, activation='relu', name='dl3')(x2)
-    x_out = layers.Dense(x_b.shape[1], activation='sigmoid', name='predictions1')(x3)
+    x_out = layers.Dense(1, activation='sigmoid', name='predictions1')(x3)
     model = models.Model(inputs = x_in, outputs = x_out, name='dnn')
     model.compile('adam', loss='binary_crossentropy')
     return model
@@ -104,13 +104,12 @@ class Agent(pygame.sprite.Sprite):
                                         save_best_only=True,
                                         save_weights_only=False, mode='auto', period=1)
         self.model.fit(x1, y1, validation_data=(x2, y2), epochs=5,
-                callbacks=[cb1, cb2], batch_size=128, verbose = 0)
+                callbacks=[cb1, cb2], batch_size=128, verbose = 1)
 
         self.model_trained = True
 
 
     def run_move(self, data):
-
         if random.random() < epsilon or not self.model_trained:
             move = self.random_move()
         else:
@@ -119,7 +118,6 @@ class Agent(pygame.sprite.Sprite):
 
 
     def model_move(self, data):
-
         x_2 = [[1, 0, 0, 0],
                [0, 1, 0, 0],
                [0, 0, 1, 0],
@@ -128,14 +126,12 @@ class Agent(pygame.sprite.Sprite):
         all_x = [i + data for i in x_2]
         all_x = np.array([self.scaler.transform(np.array([i])) for i in all_x])
         out = self.model.predict(np.squeeze(all_x))
-        return np.argmax(out[:, self.a_id])
-
+        return np.argmax(out)
 
 
     def random_move(self):
         move = random.choice(allowed_moves)
         return move
-
 
 
     def execute_move(self, move):
@@ -165,12 +161,12 @@ class Agent(pygame.sprite.Sprite):
             self.y = self.b2
 
 
-
-
     def record_results(self, g_x, y, path, g_id):
         data = [(a + b, c) for a, b, c in zip(self.move_list, g_x, y)]
         x = [i[0] for i in data]
         y = [i[1] for i in data]
+
+        y = [i[self.a_id] for i in y]
 
         if not os.path.exists(path + "/data_{0}/".format(self.a_id)):
             os.makedirs(path + "/data_{0}/".format(self.a_id))
@@ -180,7 +176,7 @@ class Agent(pygame.sprite.Sprite):
 
 class Game():
 
-    def __init__(self, agent_count = 4, food_count = 100, max_rounds = 1000, g_id = 0, min_training_games = 1000):
+    def __init__(self, agent_count = 4, food_count = 100, max_rounds = 1000, g_id = 0, min_training_games = 500):
         self.agents = [Agent(a_id = i, x = random.uniform(16, screen_size - 16), y = random.uniform(16, screen_size - 16), color = (int((color_number*(i + 1))%255), int((color_number*(i + 1)*7)%255), int((color_number*(i + 1)*11)%255))) for i in range(agent_count)]
         self.food = [Agent(a_id = i, x = random.uniform(16, screen_size - 16), y = random.uniform(16, screen_size - 16), color = (255,255,255), score = random.randint(5, 50)) for i in range(food_count)]
         self.max_rounds = max_rounds
@@ -313,10 +309,15 @@ def run_game():
     g = Game(g_id=0)
 
     for i in range(10000):
+        if i%25 == 0:
+            g.refresh_game(i, retrain=True)
+        else:
+            g.refresh_game(i, retrain=False)
+
         screen = pygame.display.set_mode((screen_size, screen_size))
         pygame.event.get()
 
-        if i%100 == 0:
+        if i%50 == 0:
             g.refresh_game(i, retrain=True)
         else:
             g.refresh_game(i, retrain=False)
