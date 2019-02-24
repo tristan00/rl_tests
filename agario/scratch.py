@@ -180,7 +180,7 @@ class Agent(pygame.sprite.Sprite):
 
 class Game():
 
-    def __init__(self, agent_count = 8, food_count = 100, max_rounds = 1000, g_id = 0, min_training_games = 200):
+    def __init__(self, agent_count = 4, food_count = 100, max_rounds = 1000, g_id = 0, min_training_games = 1000):
         self.agents = [Agent(a_id = i, x = random.uniform(16, screen_size - 16), y = random.uniform(16, screen_size - 16), color = (int((color_number*(i + 1))%255), int((color_number*(i + 1)*7)%255), int((color_number*(i + 1)*11)%255))) for i in range(agent_count)]
         self.food = [Agent(a_id = i, x = random.uniform(16, screen_size - 16), y = random.uniform(16, screen_size - 16), color = (255,255,255), score = random.randint(5, 50)) for i in range(food_count)]
         self.max_rounds = max_rounds
@@ -328,11 +328,9 @@ def run_game():
         game_stats.append(g.run_game())
         del screen
 
-        if i % 100 ==0 and i > 0:
+        if i % 200 ==0 and i > 0:
             full_stats = pd.concat(game_stats)
             full_stats.to_csv('game_stats.csv')
-
-
 
 
 
